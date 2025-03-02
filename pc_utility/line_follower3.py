@@ -33,56 +33,95 @@ class LineFollower:
         self.throttle_min = cfg.THROTTLE_MIN
         self.imageNumber = 0
         self.imageCount = 1
+        self.FramestoDisk = False
 
         self.pid_st = pid
 
+    def create_green_mask(self, img):
+        """
+        Creates a mask where white is when a pixel is more green than red, else the pixel is black.
 
-    def get_i2_color(self, cam_img):
+        :param img: The input image in BGR format.
+        :return: The resulting mask image.
+        """
 
-        try:
-            if self.imageCount%500 == 0:
+        # Split the image into its B, G, R components
+        B, G, R = cv2.split(img)
+
+        # Create a mask where the green component is greater than the red component
+        mask = np.where((G > R) & (G > B), 255, 0).astype(np.uint8)
+
+        # Find contours in the mask
+        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+        # Find the largest contour by area
+        largest_contour = max(contours, key=cv2.contourArea)
+
+        return largest_contour
+
+    def mask_trapezoid(self, img):
+        """
+        Masks the area outside of a trapezoid to black. The trapezoid has one edge at the bottom of the image
+        and the top edge is a line in the middle of the image with the width of half the image.
+
+        :param img: The input image.
+        :return: The masked image.
+        """
+        height, width = img.shape[:2]
+
+        # Define the trapezoid vertices relative to the image dimensions
+        top_width = width // 2
+        top_left = (width // 4, height // 2)
+        top_right = (3 * width // 4, height // 2)
+        bottom_left = (0, height - 10)
+        bottom_right = (width, height - 10)
+
+        # Create a mask with the same dimensions as the image
+        mask = np.zeros_like(img)
+
+        # Define the polygon (trapezoid) points
+        polygon = np.array([top_left, top_right, bottom_right, bottom_left], np.int32)
+        polygon = polygon.reshape((-1, 1, 2))
+
+        # Fill the polygon with white color on the mask
+        cv2.fillPoly(mask, [polygon], (255, 255, 255))
+
+        # Apply the mask to the image
+        masked_img = cv2.bitwise_and(img, mask)
+
+        return masked_img
+
+
+    def get_x_location(self, cam_img):
+        '''
+            After doing a complete camara calibration with the intrinsics and extrinsics parameters,
+            I decided to do something very simple.  Apply a trapazonidal mask to the image and then
+            pick the area that is more green than any other color.  This looks to work very well.
+        '''
+
+
+        if self.imageCount % 500 == 0:
+            if self.FramestoDisk :
                 cv2.imwrite(f'data/images/cropped{self.imageNumber}.png', cam_img)
                 self.imageNumber += 1
-                self.imageCount = 1
-            self.imageCount += 1
+            self.imageCount = 1
+        self.imageCount += 1
 
-            # Define the HSV range for green color
-            lower_green = np.array([45, 193, 143])  # Adjust these values based on the image
-            upper_green = np.array([93, 255, 255])
-
-            height, width, _ = cam_img.shape
-            # Calculate crop coordinates
-            start_y = int(height * 0.25)  # Starting y-coordinate (top 25% removed)
-            end_y = int(height * 0.65)  # Ending y-coordinate (bottom 40% removed)
-            # Set the top part of the image to black
-            cam_img[:start_y, :] = 0
-            # Set the bottom part of the image to black
-            cam_img[end_y:, :] = 0
-            output_image = cam_img.copy()
-            # Crop the image
-
-            #cropped = cam_img[start_y:end_y, :]
+        try :
 
             # Convert the image from BGR to HSV
-            cam_img = cv2.cvtColor(cam_img, cv2.COLOR_BGR2RGB) #weird linux thing
-            hsv_image = cv2.cvtColor(cam_img, cv2.COLOR_BGR2HSV)
-            # Create a mask that identifies green pixels
-            mask = cv2.inRange(hsv_image, lower_green, upper_green)
+            cam_img = cv2.cvtColor(cam_img, cv2.COLOR_BGR2RGB)  # weird linux thing
 
-            # Find contours in the mask
-            contours, _ = cv2.findContours(mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+            masked = self.mask_trapezoid(cam_img)
+            green_contour = self.create_green_mask(masked)
 
-
-            if contours:
-                # Find the largest contour (assumed to be the green line)
-                largest_contour = max(contours, key=cv2.contourArea)
-
-                # Draw the contour on the output image
-                cv2.drawContours(output_image, [largest_contour], -1, (0, 255, 0), 2)
-
+            # Draw the largest contour on the original image
+            if green_contour :
+                output_image = cam_img.copy()
+                cv2.drawContours(cam_img, [green_contour], -1, (0, 255, 0), 2)  # Green color, thickness 2
 
                 # Extract x and y coordinates from the contour
-                contour_points = largest_contour[:, 0, :]
+                contour_points = green_contour[:, 0, :]
                 x = contour_points[:, 0]
                 y = contour_points[:, 1]
                 ymean = np.mean(y)
@@ -94,42 +133,19 @@ class LineFollower:
                 if x_filtered.size > 0:
                     xmean = np.mean(x_filtered)
                     cv2.circle(output_image, (int(xmean + .5), int(ymean + .5) ), radius=10, color=(255, 255, 255),
-                               thickness=-1)  # Green filled circle
+                               thickness=-1)  # White filled circle
                     print('drew circle at ' + str(xmean) + ',' + str(ymean))
 
                     confidence = 0
-                    if largest_contour.size > 50:
+                    if green_contour.size > 50:
                         confidence = 1
                     return xmean, confidence, output_image
             else :
                 return 0,0,cam_img
-        except :
-            print('failed on ')
-            return 0,0,cam_img
-
-
-
-    def get_i_color(self, cam_img):
-        '''
-        get the horizontal index of the color at the given slice of the image
-        input: cam_image, an RGB numpy array
-        output: index of max color, value of cumulative color at that index, and mask of pixels in range
-        '''
-        # take a horizontal slice of the image
-        iSlice = self.scan_y
-        scan_line = cam_img[iSlice : iSlice + self.scan_height, :, :]
-
-        # convert to HSV color space
-        img_hsv = cv2.cvtColor(scan_line, cv2.COLOR_RGB2HSV)
-
-        # make a mask of the colors in our range we are looking for
-        mask = cv2.inRange(img_hsv, self.color_thr_low, self.color_thr_hi)
-
-        # which index of the range has the highest amount of yellow?
-        hist = np.sum(mask, axis=0)
-        max_yellow = np.argmax(hist)
-
-        return max_yellow, hist[max_yellow], mask
+        except Exception as e:
+            logger.error(f"Error in image processing: {str(e)}")
+            # Optional: add traceback for debugging
+            return 0, 0, cam_img
 
 
     def run(self, cam_img):
@@ -146,9 +162,9 @@ class LineFollower:
             return 0, 0, False, None
 
         try :
-            max_yellow, confidence, mask = self.get_i2_color(cam_img)
+            max_yellow, confidence, mask = self.get_x_location(cam_img)
         except :
-            print('strange return from get_i2_color')
+            print('strange return from get_x_location')
             max_yellow = 0
             confidence = 0
             mask = cam_img

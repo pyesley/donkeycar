@@ -653,9 +653,9 @@ class DriveMode:
             # Handle unexpected mode
             print(f"Unexpected mode: {mode}")
 
-        print(f"Mode: {mode}, User Steering: {user_steering}, User Throttle: {user_throttle}, "
-              f"Pilot Steering: {pilot_steering}, Pilot Throttle: {pilot_throttle}, "
-              f"Final Steering: {steering}, Final Throttle: {throttle}")
+        #print(f"Mode: {mode}, User Steering: {user_steering}, User Throttle: {user_throttle}, "
+        #      f"Pilot Steering: {pilot_steering}, Pilot Throttle: {pilot_throttle}, "
+        #      f"Final Steering: {steering}, Final Throttle: {throttle}")
 
         return steering, throttle
 
@@ -677,7 +677,7 @@ class UserPilotCondition:
         :return: tuple of (user-condition, autopilot-condition, web image)
         """
 
-        print(f"Mode: {mode}")
+        #print(f"Mode: {mode}")
 
         if mode == 'user':
             return True, False, user_image

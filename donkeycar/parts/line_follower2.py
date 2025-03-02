@@ -1,5 +1,6 @@
 import cv2
 import numpy as np
+import os
 from simple_pid import PID
 import logging
 import matplotlib.pyplot as plt
@@ -7,6 +8,32 @@ import math
 
 logger = logging.getLogger(__name__)
 
+def compute_average_hsl_rgb(image, contour):
+    # Create a mask for the contour
+    mask = np.zeros(image.shape[:2], dtype=np.uint8)
+    cv2.drawContours(mask, [contour], -1, 255, thickness=cv2.FILLED)
+
+    # Extract the pixels inside the contour
+    masked_image = cv2.bitwise_and(image, image, mask=mask)
+
+    # Convert the image to HLS color space
+    hls_image = cv2.cvtColor(masked_image, cv2.COLOR_BGR2HLS)
+
+    # Compute the average H, S, L values
+    h, l, s = cv2.split(hls_image)
+    h_mean = cv2.mean(h, mask=mask)[0]
+    s_mean = cv2.mean(s, mask=mask)[0]
+    l_mean = cv2.mean(l, mask=mask)[0]
+
+    # Compute the average R, G, B values
+    b, g, r = cv2.split(masked_image)
+    r_mean = cv2.mean(r, mask=mask)[0]
+    g_mean = cv2.mean(g, mask=mask)[0]
+    b_mean = cv2.mean(b, mask=mask)[0]
+
+    print( f"Average HSL: ({h_mean:.2f}, {s_mean:.2f}, {l_mean:.2f})")
+    print( f"Average RGB: ({r_mean:.2f}, {g_mean:.2f}, {b_mean:.2f})")
+    return (h_mean, s_mean, l_mean), (r_mean, g_mean, b_mean)
 
 class LineFollower:
     '''
@@ -36,52 +63,62 @@ class LineFollower:
         self.lastImage = 0.0
         self.pid_st = pid
         self.lastImage = None
-
-
+        logger.info("init LineFollower 2 for real")
+        self.output_dir = '/home/mdyesley/myPIDcar/data/images/'
+        os.makedirs(self.output_dir, exist_ok=True)
 
     def get_i2_color(self, cam_img):
-
+        success = cv2.imwrite(f'{self.output_dir}cropped{self.imageNumber}.png', cam_img)
+        if not success:
+            logger.error(f"Failed to write image {self.output_dir}cropped{self.imageNumber}.png")
+        else:
+            logger.info(f"Saved image {self.output_dir}cropped{self.imageNumber}.png")
+        logger.info('get_i2_color')
         try:
-            if self.imageCount%500 == 0:
-                cv2.imwrite(f'data/images/cropped{self.imageNumber}.png', cam_img)
+
+            self.imageNumber = self.imageNumber + 1
+            '''
+            if self.imageCount%5 == 0:
+
                 self.imageNumber += 1
                 self.imageCount = 1
             self.imageCount += 1
-
+            '''
             # Define the HSV range for green color
-            lower_green = np.array([45, 193, 143])  # Adjust these values based on the image
-            upper_green = np.array([93, 255, 255])
+            lower_green = np.array([52,63,54])  # Adjust these values based on the image
+            upper_green = np.array([87, 160, 98])
 
             height, width, _ = cam_img.shape
             # Calculate crop coordinates
-            start_y = int(height * 0.25)  # Starting y-coordinate (top 25% removed)
-            end_y = int(height * 0.65)  # Ending y-coordinate (bottom 40% removed)
+            start_y = int(height * 0.40)  # Starting y-coordinate (top 25% removed)
             # Set the top part of the image to black
             cam_img[:start_y, :] = 0
-            # Set the bottom part of the image to black
-            cam_img[end_y:, :] = 0
             output_image = cam_img.copy()
             # Crop the image
-
-            #cropped = cam_img[start_y:end_y, :]
 
             # Convert the image from BGR to HSV
             cam_img = cv2.cvtColor(cam_img, cv2.COLOR_BGR2RGB) #weird linux thing
             hsv_image = cv2.cvtColor(cam_img, cv2.COLOR_BGR2HSV)
             # Create a mask that identifies green pixels
             mask = cv2.inRange(hsv_image, lower_green, upper_green)
+            return 0, 0, mask
 
             # Find contours in the mask
             contours, _ = cv2.findContours(mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+            print(f'found {len(contours)} contours')
 
 
             if contours:
                 # Find the largest contour (assumed to be the green line)
                 largest_contour = max(contours, key=cv2.contourArea)
+                # Compute the average color in the largest contour
+                compute_average_hsl_rgb(cam_img, largest_contour)
+
 
                 # Draw the contour on the output image
                 cv2.drawContours(output_image, [largest_contour], -1, (0, 255, 0), 2)
-
+                #if self.imageCount % 5 == 0:
+                #    cv2.imwrite(f'data/images/contour{self.imageNumber}.png', output_image)
 
                 # Extract x and y coordinates from the contour
                 contour_points = largest_contour[:, 0, :]
@@ -228,15 +265,13 @@ class LineFollower:
         '''
         if cam_img is None:
             return 0, 0, False, None
-
-
-
+        logger.info(f'cam_img size = {cam_img.shape}')
         #MarkedImage = self.getFeatures(cam_img=cam_img)
-        MarkedImage = self.match_and_visualize(curr_img=cam_img, prev_img=self.lastImage)
+        #MarkedImage = self.match_and_visualize(curr_img=cam_img, prev_img=self.lastImage)
         try :
             max_yellow, confidence, mask = self.get_i2_color(cam_img)
         except :
-            print('strange return from get_i2_color')
+            logger.info('strange return from get_i2_color')
             max_yellow = 0
             confidence = 0
             mask = cam_img
@@ -281,7 +316,9 @@ class LineFollower:
 
         self.lastImage = cam_img
 
-        return self.steering, self.throttle, MarkedImage
+        #return self.steering, self.throttle, MarkedImage
+
+        return self.steering, self.throttle, mask
 
     def overlay_display(self, cam_img, mask, max_yellow, confidense):
         '''

@@ -19,14 +19,16 @@ from docopt import docopt
 from simple_pid import PID
 
 import donkeycar as dk
-from donkeycar.parts import TubWriter
-from donkeycar.parts import TubHandler
-from donkeycar import add_camera, \
-    add_user_controller, add_drivetrain, add_simulator, DriveMode, \
+from donkeycar.parts.tub_v2 import TubWriter
+from donkeycar.parts.datastore import TubHandler
+from donkeycar.parts.line_follower2 import LineFollower
+from donkeycar.templates.complete import add_odometry, add_camera, \
+    add_user_controller, add_drivetrain, add_simulator, add_imu, DriveMode, \
     UserPilotCondition, ToggleRecording
+from donkeycar.parts.logger import LoggerPart
 from donkeycar.parts.transform import Lambda
-from donkeycar.parts import ExplodeDict
-from donkeycar.parts import JoystickController
+from donkeycar.parts.explode import ExplodeDict
+from donkeycar.parts.controller import JoystickController
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -37,15 +39,14 @@ def drive(cfg, use_joystick=False, camera_type='single', meta=[]):
     Construct a working robotic vehicle from many parts.
     Each part runs as a job in the Vehicle loop, calling either
     it's run or run_threaded method depending on the constructor flag `threaded`.
-    All parts a
-    re updated one after another at the framerate given in
+    All parts are updated one after another at the framerate given in
     cfg.DRIVE_LOOP_HZ assuming each part finishes processing in a timely manner.
     Parts may have named outputs and inputs. The framework handles passing named outputs
     to parts requesting the same named input.
     '''
     
     #Initialize car
-    V = donkeycar.vehicle.Vehicle()
+    V = dk.vehicle.Vehicle()
 
     #
     # if we are using the simulator, set it up
@@ -230,9 +231,7 @@ def add_cv_controller(
         run_condition="run_pilot"):
 
         # __import__ the module
-        print("***")
         print( 'import module_name:', module_name )
-        print("***")
         module = __import__(module_name)
 
         # walk module path to get to module with class
