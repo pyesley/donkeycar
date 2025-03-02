@@ -19,7 +19,8 @@ def hsv_tuner(image_path):
     height = int(image.shape[0] * scale_percent / 100)
     image = cv2.resize(image, (width, height))
 
-    # Convert the image to HSV color space
+    # Convert the image to HSV color
+    image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
     hsv_image = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
 
     # Create a window for the original and masked images
@@ -68,8 +69,8 @@ def hsv_tuner(image_path):
 
 
 # Example usage
-IMAGE_PATH = "D:\\donkeyData\\images\\"
-image = '060335.jpg'
+IMAGE_PATH = "C:\\Users\\pyesl\\Documents\\donkeyCar\\images\\"
+image = 'cropped145.png'
 filename = IMAGE_PATH + image
 
 hsv_tuner(filename)

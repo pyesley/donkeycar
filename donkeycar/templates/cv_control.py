@@ -21,7 +21,7 @@ from simple_pid import PID
 import donkeycar as dk
 from donkeycar.parts.tub_v2 import TubWriter
 from donkeycar.parts.datastore import TubHandler
-from donkeycar.parts.line_follower import LineFollower
+from donkeycar.parts.line_follower4 import LineFollower
 from donkeycar.templates.complete import add_odometry, add_camera, \
     add_user_controller, add_drivetrain, add_simulator, add_imu, DriveMode, \
     UserPilotCondition, ToggleRecording
