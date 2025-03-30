@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 class LineFollower:
     '''
-    OpenCV based controller
+    OpenCV based controller (small change)
     This controller takes a horizontal slice of the image at a set Y coordinate.
     Then it converts to HSV and does a color thresh hold to find the yellow pixels.
     It does a histogram to find the pixel of maximum yellow. Then is uses that iPxel
