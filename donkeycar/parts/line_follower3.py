@@ -2,6 +2,7 @@ import cv2
 import numpy as np
 from simple_pid import PID
 import logging
+
 import matplotlib.pyplot as plt
 import math
 import time
@@ -38,6 +39,7 @@ class LineFollower:
         self.throttle_min = cfg.THROTTLE_MIN
         self.imageNumber = 0
         self.imageCount = 1
+
         self.lastImage = 0.0
         self.pid_st = pid
         self.lastImage = None
@@ -215,6 +217,7 @@ class LineFollower:
 
         return frame
 
+
     def run(self, cam_img):
         '''
         main runloop of the CV controller
@@ -230,16 +233,19 @@ class LineFollower:
 
 
 
+
         MarkedImage = self.match_and_visualize(curr_img=cam_img, prev_img=self.lastImage)
         try :
             max_yellow, confidence, mask = self.get_i2_color(cam_img)
         except :
             print('strange return from get_i2_color')
+
             max_yellow = 0
             confidence = 0
             mask = cam_img
 
         conf_thresh = 0.001
+
         '''
         imu = ArduinoIMU()
         data = imu.run()  # or imu.run_threaded() if you're doing multi-threaded ops
@@ -254,6 +260,7 @@ class LineFollower:
 
         #output_img = self.overlay_map_in_corner(cam_img, map_img)
         '''
+
 
         if self.target_pixel is None:
             # Use the first run of get_i_color to set our relationship with the yellow line.
@@ -286,16 +293,72 @@ class LineFollower:
         else:
             logger.info(f"No line detected: confidence {confidence} < {self.confidence_threshold}")
 
-
-
         # show some diagnostics
-        #if self.overlay_image:
-        #    cam_img = self.overlay_display(cam_img, mask, max_yellow, confidence)
-        #   #cam_img = NewMask
+        if self.overlay_image:
+            cam_img = self.overlay_display(cam_img, mask, max_yellow, confidence)
 
-        self.lastImage = cam_img
+        return self.steering, self.throttle, combined_output #mask
 
-        # Overlay the real-time map in the bottom-right corner
-        final_img = self.overlay_map_in_corner(MarkedImage, map_img, map_scale=0.3)
+    def overlay_display(self, cam_img, mask, max_yellow, confidense):
+        '''
+        composite mask on top the original image.
+        show some values we are using for control
+        '''
 
-        return self.steering, self.throttle, final_img
+        #mask_exp = np.stack((mask, ) * 3, axis=-1)
+        #iSlice = self.scan_y
+        #img = np.copy(cam_img)
+        #img[iSlice : iSlice + self.scan_height, :, :] = mask_exp
+        # img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
+
+        display_str = []
+        display_str.append("STEERING:{:.1f}".format(self.steering))
+        display_str.append("THROTTLE:{:.2f}".format(self.throttle))
+        display_str.append("I YELLOW:{:.2f}".format(max_yellow))
+        display_str.append("CONF:{:.2f}".format(confidense))
+
+        y = 10
+        x = 10
+
+        for s in display_str:
+            cv2.putText(cam_img, s, color=(0, 0, 0), org=(x ,y), fontFace=cv2.FONT_HERSHEY_SIMPLEX, fontScale=0.4)
+            y += 10
+
+        return cam_img
+
+if __name__ == '__main__':
+    # Load the input image
+    cam_img = cv2.imread("C:\\Users\\pyesl\\Documents\\donkeyCar\\images\\cropped145.png")
+    cam_img = cv2.cvtColor(cam_img, cv2.COLOR_BGR2RGB)
+
+    if cam_img is None:
+        print("Error: Could not load image.")
+        exit(1)
+
+    # Create an instance of the LineFollower class
+    pid = PID(1.0, 0.1, 0.05)  # Example PID values, adjust as needed
+    cfg = type('Config', (object,), {})()  # Create a simple config object
+    cfg.OVERLAY_IMAGE = False
+    cfg.SCAN_Y = 100
+    cfg.SCAN_HEIGHT = 20
+    cfg.COLOR_THRESHOLD_LOW = [20, 100, 100]
+    cfg.COLOR_THRESHOLD_HIGH = [30, 255, 255]
+    cfg.TARGET_PIXEL = None
+    cfg.TARGET_THRESHOLD = 10
+    cfg.CONFIDENCE_THRESHOLD = 0.5
+    cfg.THROTTLE_INITIAL = 0.2
+    cfg.THROTTLE_STEP = 0.05
+    cfg.THROTTLE_MAX = 0.5
+    cfg.THROTTLE_MIN = 0.1
+
+    line_follower = LineFollower(pid, cfg)
+
+    # Call the get_i2_color method
+    xmean, confidence, output_image = line_follower.get_x_location(cam_img)
+
+    # Display the input and output images
+    #cv2.imshow('Input Image', cam_img)
+    cv2.imshow('Output Image', output_image)
+    cv2.waitKey(0)
+    cv2.destroyAllWindows()
+
