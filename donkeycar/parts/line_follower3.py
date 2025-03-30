@@ -2,14 +2,16 @@ import cv2
 import numpy as np
 from simple_pid import PID
 import logging
-import sys
-import os
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-from mapper3 import Mapper
+
+import matplotlib.pyplot as plt
+import math
+import time
+from donkeycar.parts.arduinoSerial import ARDUINONanoSerial,ArduinoEncoder, ArduinoIMU
+from donkeycar.parts.pose2 import Pose
+
+from donkeycar.parts.plot import PosePlotter
 
 logger = logging.getLogger(__name__)
-
-
 
 
 class LineFollower:
@@ -37,123 +39,88 @@ class LineFollower:
         self.throttle_min = cfg.THROTTLE_MIN
         self.imageNumber = 0
         self.imageCount = 1
-        self.FramestoDisk = False
-        self.mapper = Mapper()
 
+        self.lastImage = 0.0
         self.pid_st = pid
+        self.lastImage = None
 
-    def create_green_mask(self, img):
-        """
-        Creates a mask where white is when a pixel is more green than red and blue,
-        then identifies the contour that contains the most green pixels.
-
-        :param img: The input image in BGR format.
-        :return: The contour with the most green pixels.
-        """
-        # Split the image into its B, G, R components
-        B, G, R = cv2.split(img)
-
-        # Create a mask where the green component is greater than the red and blue components
-        mask = np.where((G > R) & (G > B), 255, 0).astype(np.uint8)
-
-        # Find contours in the mask
-        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-
-        if not contours:
-            return np.array([])
-
-        # For each contour, calculate a "greenness score"
-        best_contour = None
-        best_score = -1
-
-        for contour in contours:
-            # Create a mask for just this contour
-            contour_mask = np.zeros_like(mask)
-            cv2.drawContours(contour_mask, [contour], 0, 255, -1)
-
-            # Get the RGB values within this contour
-            green_values = G[contour_mask == 255]
-            red_values = R[contour_mask == 255]
-            blue_values = B[contour_mask == 255]
-
-            if len(green_values) == 0:
-                continue
-
-            # Calculate greenness score: how much greener than other channels
-            greenness = np.mean(green_values - (red_values + blue_values) / 2)
-
-            # Weight by area to favor larger contours with similar greenness
-            score = greenness * len(green_values)
-
-            if score > best_score:
-                best_score = score
-                best_contour = contour
-
-        return best_contour if best_contour is not None else np.array([])
-
-    def mask_trapezoid(self, img):
-        """
-        Masks the area outside of a trapezoid to black. The trapezoid has one edge at the bottom of the image
-        and the top edge is a line in the middle of the image with the width of half the image.
-
-        :param img: The input image.
-        :return: The masked image.
-        """
-        height, width = img.shape[:2]
-
-        # Define the trapezoid vertices relative to the image dimensions
-        top_width = width // 2
-        top_left = (width // 4, height // 2)
-        top_right = (3 * width // 4, height // 2)
-        bottom_left = (0, height - 10)
-        bottom_right = (width, height - 10)
-
-        # Create a mask with the same dimensions as the image
-        mask = np.zeros_like(img)
-
-        # Define the polygon (trapezoid) points
-        polygon = np.array([top_left, top_right, bottom_right, bottom_left], np.int32)
-        polygon = polygon.reshape((-1, 1, 2))
-
-        # Fill the polygon with white color on the mask
-        cv2.fillPoly(mask, [polygon], (255, 255, 255))
-
-        # Apply the mask to the image
-        masked_img = cv2.bitwise_and(img, mask)
-
-        return masked_img
+        # IMU integration
+        self.imu = ArduinoIMU()  # Instantiate the ArduinoIMU class
+        self.encoder = ArduinoEncoder()  # Instantiate the ArduinoIMU class
+        self.last_imu_time = time.time()  # Track the last time IMU data was printed
+        self.camera_intrinsics = np.array([
+            [700.32833455, 0.0, 633.7861054],
+            [0.0, 703.47654591, 342.84793261],
+            [0.0, 0.0, 1.0]
+        ], dtype=np.float64)
+        self.camera_distortion = np.array([-0.30944433, 0.1258339, -0.00045581, -0.00057164, -0.01383379], dtype=np.float64)
+        self.optical_flow_params = {
+            'winSize': (21, 21),  # Window size for flow computation
+            'maxLevel': 3,  # Number of pyramid levels
+            'criteria': (
+                cv2.TERM_CRITERIA_EPS |
+                cv2.TERM_CRITERIA_COUNT,
+                30,
+                0.01
+            )  # Termination criteria: either epsilon or iteration count
+        }
 
 
-    def get_x_location(self, cam_img):
-        '''
-            After doing a complete camara calibration with the intrinsics and extrinsics parameters,
-            I decided to do something very simple.  Apply a trapazonidal mask to the image and then
-            pick the area that is more green than any other color.  This looks to work very well.
-        '''
+
+        # Pose integration
+        #self.Pose = Pose(camera_intrinsics=self.camera_intrinsics,
+        #           camera_distortion=self.camera_distortion,
+        #           optical_flow_params=self.optical_flow_params)
+
+        #self.plotter = PosePlotter(width=3, height=3, dpi=100)
 
 
-        if self.imageCount % 500 == 0:
-            if self.FramestoDisk :
+    def get_i2_color(self, cam_img):
+
+        try:
+            if self.imageCount%500 == 0:
                 cv2.imwrite(f'data/images/cropped{self.imageNumber}.png', cam_img)
                 self.imageNumber += 1
-            self.imageCount = 1
-        self.imageCount += 1
+                self.imageCount = 1
+            self.imageCount += 1
 
-        try :
+            # Define the HSV range for green color
+            lower_green = np.array([45, 193, 143])  # Adjust these values based on the image
+            upper_green = np.array([93, 255, 255])
+
+            height, width, _ = cam_img.shape
+            # Calculate crop coordinates
+            start_y = int(height * 0.25)  # Starting y-coordinate (top 25% removed)
+            end_y = int(height * 0.65)  # Ending y-coordinate (bottom 40% removed)
+            # Set the top part of the image to black
+            cam_img[:start_y, :] = 0
+            # Set the bottom part of the image to black
+            cam_img[end_y:, :] = 0
             output_image = cam_img.copy()
+            # Crop the image
+
+            #cropped = cam_img[start_y:end_y, :]
+
             # Convert the image from BGR to HSV
-            cam_img = cv2.cvtColor(cam_img, cv2.COLOR_BGR2RGB)  # weird linux thing
+            cam_img = cv2.cvtColor(cam_img, cv2.COLOR_BGR2RGB) #weird linux thing
+            hsv_image = cv2.cvtColor(cam_img, cv2.COLOR_BGR2HSV)
+            # Create a mask that identifies green pixels
+            mask = cv2.inRange(hsv_image, lower_green, upper_green)
 
-            masked = self.mask_trapezoid(cam_img)
-            green_contour = self.create_green_mask(masked)
+            # Find contours in the mask
+            contours, _ = cv2.findContours(mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
 
-            # Draw the largest contour on the original image
-            if len( green_contour )  > 10 :
 
-                cv2.drawContours(cam_img, [green_contour], -1, (0, 255, 0), 2)  # Green color, thickness 2
+            if contours:
+                # Find the largest contour (assumed to be the green line)
+                largest_contour = max(contours, key=cv2.contourArea)
+
+                # Draw the contour on the output image
+                cv2.drawContours(output_image, [largest_contour], -1, (0, 255, 0), 2)
+
 
                 # Extract x and y coordinates from the contour
-                contour_points = green_contour[:, 0, :]
+                contour_points = largest_contour[:, 0, :]
                 x = contour_points[:, 0]
                 y = contour_points[:, 1]
                 ymean = np.mean(y)
@@ -165,19 +132,90 @@ class LineFollower:
                 if x_filtered.size > 0:
                     xmean = np.mean(x_filtered)
                     cv2.circle(output_image, (int(xmean + .5), int(ymean + .5) ), radius=10, color=(255, 255, 255),
-                               thickness=-1)  # White filled circle
+                               thickness=-1)  # Green filled circle
                     print('drew circle at ' + str(xmean) + ',' + str(ymean))
 
                     confidence = 0
-                    if green_contour.size > 40:
+                    if largest_contour.size > 50:
                         confidence = 1
                     return xmean, confidence, output_image
             else :
                 return 0,0,cam_img
-        except Exception as e:
-            logger.error(f"Error in image processing: {str(e)}")
-            # Optional: add traceback for debugging
-            return 0, 0, cam_img
+        except :
+            print('failed on ')
+            return 0,0,cam_img
+
+    # ---------------------
+    # Camera Intrinsic Parameters
+    # Replace these with your camera's calibrated parameters.
+    # fx, fy: focal lengths; cx, cy: principal point.
+    fx = 700.32833455
+    fy = 703.47654591
+    cx = 633.7861054
+    cy = 342.84793261
+
+    K = np.array([[fx, 0, cx],
+                  [0, fy, cy],
+                  [0, 0, 1]], dtype=np.float64)
+
+    # Distortion coefficients (assume zero or insert your actual distortion from calibration)
+    dist_coeffs = [-0.30944433,  0.1258339, -0.00045581, -0.00057164, -0.01383379]
+
+
+
+    def get_i_color(self, cam_img):
+        '''
+        get the horizontal index of the color at the given slice of the image
+        input: cam_image, an RGB numpy array
+        output: index of max color, value of cumulative color at that index, and mask of pixels in range
+        '''
+        # take a horizontal slice of the image
+        iSlice = self.scan_y
+        scan_line = cam_img[iSlice : iSlice + self.scan_height, :, :]
+
+        # convert to HSV color space
+        img_hsv = cv2.cvtColor(scan_line, cv2.COLOR_RGB2HSV)
+
+        # make a mask of the colors in our range we are looking for
+        mask = cv2.inRange(img_hsv, self.color_thr_low, self.color_thr_hi)
+
+        # which index of the range has the highest amount of yellow?
+        hist = np.sum(mask, axis=0)
+        max_yellow = np.argmax(hist)
+
+        return max_yellow, hist[max_yellow], mask
+
+    def overlay_map_in_corner(self, frame, map_img, map_scale=0.3):
+        """
+        Overlays map_img onto the bottom-right corner of 'frame'.
+        :param frame: 640x480 main camera frame (BGR).
+        :param map_img: the small map image to overlay (BGR).
+        :param map_scale: fraction of frame size (0 < map_scale < 1).
+        """
+        h_frame, w_frame = frame.shape[:2]
+
+        # Resize map
+        new_w = int(w_frame * map_scale)
+        new_h = int(h_frame * map_scale)
+        map_small = cv2.resize(map_img, (new_w, new_h))
+
+        # Bottom-right corner
+        x_start = w_frame - new_w
+        y_start = h_frame - new_h
+
+        # Region of interest
+        roi = frame[y_start:y_start + new_h, x_start:x_start + new_w]
+
+        # Create mask from the map
+        map_small_gray = cv2.cvtColor(map_small, cv2.COLOR_BGR2GRAY)
+        _, mask = cv2.threshold(map_small_gray, 1, 255, cv2.THRESH_BINARY)
+
+        map_bg = cv2.bitwise_and(roi, roi, mask=cv2.bitwise_not(mask))
+        map_fg = cv2.bitwise_and(map_small, map_small, mask=mask)
+        combined = cv2.add(map_bg, map_fg)
+        frame[y_start:y_start + new_h, x_start:x_start + new_w] = combined
+
+        return frame
 
 
     def run(self, cam_img):
@@ -193,17 +231,36 @@ class LineFollower:
         if cam_img is None:
             return 0, 0, False, None
 
+
+
+
+        MarkedImage = self.match_and_visualize(curr_img=cam_img, prev_img=self.lastImage)
         try :
-            max_yellow, confidence, mask = self.get_x_location(cam_img)
+            max_yellow, confidence, mask = self.get_i2_color(cam_img)
         except :
-            print('strange return from get_x_location')
+            print('strange return from get_i2_color')
+
             max_yellow = 0
             confidence = 0
             mask = cam_img
 
         conf_thresh = 0.001
 
-        combined_output, visual_img, plot_image = self.mapper.run( cam_img )
+        '''
+        imu = ArduinoIMU()
+        data = imu.run()  # or imu.run_threaded() if you're doing multi-threaded ops
+        encoder = ArduinoEncoder()
+        distance, velocity = encoder.run(self.throttle)  # or imu.run_threaded() if you're doing multi-threaded ops
+
+        x, y, theta = self.Pose.update(image=cam_img, imu_data=data, encoder_distance=distance)
+
+        self.plotter.update(x, y, theta)
+
+        map_img = self.plotter.get_plot_image()
+
+        #output_img = self.overlay_map_in_corner(cam_img, map_img)
+        '''
+
 
         if self.target_pixel is None:
             # Use the first run of get_i_color to set our relationship with the yellow line.
@@ -304,3 +361,4 @@ if __name__ == '__main__':
     cv2.imshow('Output Image', output_image)
     cv2.waitKey(0)
     cv2.destroyAllWindows()
+
