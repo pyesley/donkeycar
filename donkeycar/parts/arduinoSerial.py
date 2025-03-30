@@ -1,6 +1,9 @@
 import serial
 import time
 import math
+import logging
+
+from numpy.core.numeric import rollaxis
 
 
 class ARDUINONanoSerial:
@@ -59,15 +62,15 @@ class ARDUINONanoSerial:
         """Send a command to move the servo."""
         pwm_angle = int(max(min(pwm_angle, 180), 0))
         self.flush_input_buffer()
-        #print(f'angle {pwm_angle}')
+        #logging.info(f'angle {pwm_angle}')
         command = f"STE:{pwm_angle}\n"
         self.serPort.write(command.encode('utf-8'))
         #response = self.read_until_complete()
         '''
         if response:
-            print(f"Servo Response: {response}")
+            logging.info(f"Servo Response: {response}")
         else:
-            print("No servo response received")
+            logging.info("No servo response received")
         '''
 
     def throttle(self, pwm_throttle):
@@ -83,10 +86,18 @@ class ARDUINONanoSerial:
         #response = self.read_until_complete()
         ''''
         if response:
-            print(f"Drive Response: {response}")
+            logging.info(f"Drive Response: {response}")
         else:
-            print("No drive response received")
+            logging.info("No drive response received")
         '''
+
+    def parse_im2_data(self,data_string):
+        sections = data_string.split('|')
+        roll  = float( sections[0].split(':')[1] )
+        pitch = float( sections[1].split(':')[1] )
+        yaw = float( sections[2].split(':')[1] )
+
+        return roll,pitch,yaw
 
     def parse_imu_data(self,data_string):
         sections = data_string.split('|')
@@ -111,6 +122,27 @@ class ARDUINONanoSerial:
         }
         return accel, gyro, mag
 
+    def request_im2(self):
+        """Request IMU YAW data from fancy Kalman Filter running on audrino."""
+        ''' say we return a string like 
+             ROLL:{roll}|PITCH:{pitch}|YAW:{yaw}
+        '''
+        self.flush_input_buffer()
+        self.serPort.write(b"IM2\n")
+        response = self.read_until_complete()
+        if response:
+            try :
+                logging.info(f"RPY Data: {response}")
+                roll, pitch, yaw = self.parse_im2_data(response)
+                return roll, pitch, yaw
+            except :
+                logging.info("bad parse")
+                return -999,-999,-999
+        else:
+            logging.info("No IM2 data received")
+            return -999,-999,-999
+
+
 
     def request_imu(self):
         """Request IMU data."""
@@ -122,13 +154,13 @@ class ARDUINONanoSerial:
         response = self.read_until_complete()
         if response:
             try :
-                print(f"IMU Data: {response}")
+                logging.info(f"IMU Data: {response}")
                 accel, gyro, mag = self.parse_imu_data(response)
                 return accel, gyro, mag
             except :
-                print("bad parse")
+                logging.info("bad parse")
         else:
-            print("No IMU data received")
+            logging.info("No IMU data received")
 
     def request_ENC(self):
         """Request Encoder distance and velocity data."""
@@ -141,11 +173,12 @@ class ARDUINONanoSerial:
                 if len(data) == 2:
                     ticks = int(data[0])
                     velocity = float(data[1])
+                    logging.info(f"ENC Data: {ticks}, {velocity}")
                     return ticks, velocity
             else:
-                print("No ENC data received")
+                logging.info("No ENC data received")
         except :
-            print("bad parse")
+            logging.info("bad parse")
 
     def reset_encoder(self):
         """Reset the encoder."""
@@ -160,14 +193,14 @@ class ArduinoSteering:
     RIGHT_ANGLE = 1
 
     def __init__(self, pwm_left, pwm_right):
-        print(f'ArduinoSteering {pwm_left} {pwm_right}')
+        logging.info(f'ArduinoSteering {pwm_left} {pwm_right}')
         self.intercept = (pwm_right + pwm_left) / 2.0
         self.slope = pwm_right - self.intercept
         self.ADR = ARDUINONanoSerial()
         self.running = True
         self.pulse = self.intercept
-        print(f'ArduinoSteering intercept {self.intercept} slope {self.slope}')
-        print('Arduino Steering created')
+        logging.info(f'ArduinoSteering intercept {self.intercept} slope {self.slope}')
+        logging.info('Arduino Steering created')
 
     def update(self):
         while self.running:
@@ -177,7 +210,7 @@ class ArduinoSteering:
         # map absolute angle to angle that vehicle can implement.
         steering = int(self.intercept + self.slope * steeringIn)
         steering = int( max ( min(steering, 120), 0))
-        #print(f'************steering {steeringIn} -> {steering}')
+        #logging.info(f'************steering {steeringIn} -> {steering}')
         self.pulse = steering
         self.ADR.steering(steering)
 
@@ -202,7 +235,7 @@ class ArduinoThrottle:
         self.running = True
         self.pulse = 0
         self.running = True
-        print('Arduino Throttle created')
+        logging.info('Arduino Throttle created')
 
     def update(self):
         while self.running:
@@ -274,13 +307,13 @@ def calibrate_encoder():
         # Stop the throttle
         arduino.throttle(0)
 
-        print(f"time run {time.perf_counter() - start_time}")
+        logging.info(f"time run {time.perf_counter() - start_time}")
 
         # Get the encoder data
         ticks, _ = arduino.request_ENC()
 
         # Ask the user for the distance
-        print( f'ticks {ticks}')
+        logging.info( f'ticks {ticks}')
         distance_inches = float(input("Enter the distance traveled in inches: "))
         distance_cm = distance_inches * 2.54
 
@@ -291,14 +324,14 @@ def calibrate_encoder():
 
         # Compute the cm/ticks ratio
         cm_per_tick = total_distance_cm / total_ticks
-        print(f"Current cm/tick ratio: {cm_per_tick:.4f}")
+        logging.info(f"Current cm/tick ratio: {cm_per_tick:.4f}")
 
         # Ask if the user wants to run another calibration
         another_run = input("Do you want to run another calibration? (y/n): ")
         if another_run.lower() != 'y':
             break
 
-    print(f"Final cm/tick ratio after {measurements} measurements: {cm_per_tick:.4f}")
+    logging.info(f"Final cm/tick ratio after {measurements} measurements: {cm_per_tick:.4f}")
     return cm_per_tick
 
 
@@ -326,16 +359,16 @@ def mainOld():
             arduino.steering(angle)
             imu_data = arduino.request_imu()
             enc_data = arduino.request_ENC()
-            print(f"IMU Data: {imu_data}")
-            print(f"Encoder Data: {enc_data}")
+            logging.info(f"IMU Data: {imu_data}")
+            logging.info(f"Encoder Data: {enc_data}")
             time.sleep(1)
             isecCount += 1
             t = t + 2 * math.pi / 10
             if t > 2 * math.pi:
                 t = 0
-            print(t, drive, angle)
+            logging.info(t, drive, angle)
         except serial.SerialException as e:
-            print(f"Serial error: {e}")
+            logging.info(f"Serial error: {e}")
             time.sleep(1)  # Wait before retrying
 
 
@@ -344,6 +377,6 @@ if __name__ == "__main__":
         #main()
         calibrate_encoder()
     except KeyboardInterrupt:
-        print("\nExiting...")
+        logging.info("\nExiting...")
     finally:
         ARDUINONanoSerial().serPort.close()
