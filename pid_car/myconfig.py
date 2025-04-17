@@ -563,7 +563,7 @@ AUTO_RECORD_ON_THROTTLE = True     #if true, we will record whenever throttle is
 # # computer vision template
 # #
 # # configure which part is used as the autopilot - change to use your own autopilot
-CV_CONTROLLER_MODULE = "donkeycar.parts.line_follower2"
+CV_CONTROLLER_MODULE = "donkeycar.parts.line_follower3"
 # CV_CONTROLLER_CLASS = "LineFollower"
 # CV_CONTROLLER_INPUTS = ['cam/image_array']
 # CV_CONTROLLER_OUTPUTS = ['pilot/steering', 'pilot/throttle', 'cv/image_array']

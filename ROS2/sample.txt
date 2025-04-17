@@ -1,0 +1,6 @@
+chmod +x arduino-ide_2.3.6_Linux_64bit.AppImage
+
+(base) pyesley@pyesley-Creator-16-AI-Studio-A1VHG:~/Arduino$
+
+I want a prompt that is just the environment name and current directory, like this:
+(base) ~/Arduino$

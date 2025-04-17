@@ -76,11 +76,9 @@ class LineFollower:
     def get_i2_color(self, cam_img):
 
         try:
-            if self.imageCount%500 == 0:
-                cv2.imwrite(f'data/images/cropped{self.imageNumber}.png', cam_img)
-                self.imageNumber += 1
-                self.imageCount = 1
-            self.imageCount += 1
+
+            cv2.imwrite(f'data/images/cropped{self.imageNumber}.png', cam_img)
+            self.imageNumber += 1
 
             # Define the HSV range for green color
             lower_green = np.array([45, 193, 143])  # Adjust these values based on the image
