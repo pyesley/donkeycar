@@ -244,11 +244,11 @@ void sendEncoderData() {
       int32_t encoderCnt = encoderCount;
     interrupts();
     //get the message read to send to the Raspberry Pi
-    char buffer[12];
-    snprintf(buffer, sizeof(buffer),"%1d",static_cast<long>(encoderCnt));
-    String encData = buffer;
-    encData += ","+String(currentVelocity,4);
+    String encData = String(static_cast<long>(encoderCnt));
+    encData += "," + String(currentVelocity, 4);
+    //Serial.println(encData);
     Serial1.println(encData);
+    Serial1.flush();
 }
 
 void resetEncoderData() {
