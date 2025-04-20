@@ -50,6 +50,7 @@ class LineFollower:
         :param img: The input image in BGR format.
         :return: The contour with the most green pixels.
         """
+        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)  # weird linux thing
         # Split the image into its B, G, R components
         B, G, R = cv2.split(img)
 
