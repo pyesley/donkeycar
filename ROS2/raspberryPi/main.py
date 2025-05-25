@@ -3,59 +3,65 @@ import rclpy
 from rclpy.executors import MultiThreadedExecutor
 
 # Import the node classes from your existing scripts
-# Make sure these files are in the same directory or accessible in your Python path
 from arduino_ros_bridge import ArduinoBridgeNode #
 from camerastream import GstCameraPublisher     #
+from IMU_6050 import MPU6050PublisherNode  # New IMU Node
 
-def main(args=None):
+def main(args=None): #
     rclpy.init(args=args)
 
     arduino_node = None
     camera_node = None
+    imu_node = None # Added IMU node
     executor = None
 
     try:
-        # Instantiate both nodes
+        # Instantiate all nodes
         arduino_node = ArduinoBridgeNode() #
         camera_node = GstCameraPublisher() #
+        imu_node = MPU6050PublisherNode()  # Instantiate the new IMU node
 
-        # Create a MultiThreadedExecutor
-        # You can adjust num_threads, default uses thread pool size based on CPU cores
-        executor = MultiThreadedExecutor()
+        executor = MultiThreadedExecutor() #
 
-        # Add both nodes to the executor
-        executor.add_node(arduino_node)
-        executor.add_node(camera_node)
+        # Add all nodes to the executor
+        executor.add_node(arduino_node) #
+        executor.add_node(camera_node) #
+        executor.add_node(imu_node)    # Add the new IMU node
 
         print("Nodes added to executor. Spinning...")
-        # Spin the executor, processing callbacks for both nodes
-        executor.spin()
+        executor.spin() #
 
     except KeyboardInterrupt:
-        print("Keyboard interrupt detected. Shutting down...")
+        print("Keyboard interrupt detected. Shutting down...") #
     except Exception as e:
-        print(f"An error occurred: {e}")
-        # Optional: Log the full traceback
-        # import traceback
-        # traceback.print_exc()
+        print(f"An error occurred: {e}") #
     finally:
-        # Cleanup
         if executor is not None:
-            # This should implicitly stop spinning if not already stopped
-            executor.shutdown()
+            executor.shutdown() #
 
-        if camera_node is not None and rclpy.ok(): # Check if rclpy is still valid
-             # Ensure camera resources are released if possible
-             # The camera node's destroy_node method handles cap.release()
-            camera_node.destroy_node()
+        # It's good practice to destroy nodes in reverse order of creation or based on dependencies
+        # For now, order might not strictly matter as much, but consider if inter-node dependencies exist.
 
-        if arduino_node is not None and rclpy.ok():
-            # The arduino node's shutdown method handles serial closing and thread joining
-            arduino_node.shutdown()
-            arduino_node.destroy_node()
+        if imu_node is not None and rclpy.ok():
+            imu_node.shutdown() # Custom shutdown for MPU6050 node
+            imu_node.destroy_node()
+            print("MPU6050 node destroyed.")
+
+        if camera_node is not None and rclpy.ok(): #
+            # camerastream.py needs a destroy_node method that calls cap.release()
+            # Assuming GstCameraPublisher has a proper destroy_node or shutdown method
+            if hasattr(camera_node, 'shutdown'): # Check if custom shutdown exists
+                camera_node.shutdown()
+            camera_node.destroy_node() #
+            print("Camera node destroyed.")
+
+        if arduino_node is not None and rclpy.ok(): #
+            arduino_node.shutdown() #
+            arduino_node.destroy_node() #
+            print("Arduino node destroyed.")
 
         if rclpy.ok():
-            rclpy.shutdown()
+            rclpy.shutdown() #
         print("Cleanup complete.")
 
 
