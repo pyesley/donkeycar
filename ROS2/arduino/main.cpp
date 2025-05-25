@@ -1,21 +1,20 @@
 #include <Arduino.h>
 #include <Servo.h>
-#include "Arduino_BMI270_BMM150.h" // Use the specific IMU library
+// #include "Arduino_BMI270_BMM150.h" // IMU Library Removed as per previous modification
 #include <cstdint>
 
 // Pin Definitions
 const int SERVO_STEERING_PIN = 3;
-const int SERVO_THROTTLE_PIN = 5; // PWM Pin for motor driver ESC/H-Bridge
-const int DIRECTION_PIN = 7;      // Digital Pin for motor direction
-const int ENCODER_PIN_A = 4;      // Encoder channel A (using only one for simplicity now)
-// const int ENCODER_PIN_B = 2;   // Optional: Add for quadrature if needed
+const int SERVO_THROTTLE_PIN = 5;
+const int DIRECTION_PIN = 7;
+const int ENCODER_PIN_A = 4;
 
 // Serial Communication (with RPi via TX/RX pins)
-HardwareSerial& RPiSerial = Serial1; // Use Serial1 for RPi connection
-const unsigned long BAUD_RATE_PI = 115200;
+HardwareSerial& RPiSerial = Serial1;
+const unsigned long BAUD_RATE_PI = 57600;//115200; // Matches your modified arduino_ros_bridge.py
 
 // Timing Constants
-const unsigned long ENCODER_DEBOUNCE_TIME_MICROS = 500; // Microseconds debounce for encoder
+const unsigned long ENCODER_DEBOUNCE_TIME_MICROS = 500;
 const unsigned long SENSOR_SEND_INTERVAL_MS = 50;     // Send sensor data every 50ms (20Hz)
 
 // Global Objects
@@ -24,46 +23,37 @@ Servo servoSteering;
 // Encoder Variables
 volatile int32_t encoderCount = 0;
 volatile unsigned long lastEncoderInterruptTime = 0;
-volatile int8_t currentDirection = 1; // 1 for forward, -1 for reverse based on throttle cmd
-
-// IMU Variables
-float accX = 0.0, accY = 0.0, accZ = 0.0;
-float gyroX = 0.0, gyroY = 0.0, gyroZ = 0.0;
+volatile int8_t currentDirection = 1;
 
 // Timing
 unsigned long lastSensorSendTime = 0;
 
 // --- Binary Protocol Definition ---
-// RPi -> Arduino Command Packet (Size: 2 + 2 + 2 + 1 = 7 bytes)
+// RPi -> Arduino Command Packet
 const uint8_t CMD_START_BYTE_1 = 0xA5;
 const uint8_t CMD_START_BYTE_2 = 0x5A;
 struct CommandPacket {
-    int16_t steering_angle; // e.g., 0-180
-    int16_t throttle_speed; // -255 to 255
+    int16_t steering_angle;
+    int16_t throttle_speed;
 };
 
-// Arduino -> RPi Sensor Packet (Size: 2 + (6 * 4) + 4 + 1 = 31 bytes)
+// Arduino -> RPi Sensor Packet (Only encoder_ticks)
 const uint8_t SENSOR_START_BYTE_1 = 0xB6;
 const uint8_t SENSOR_START_BYTE_2 = 0x6B;
-struct __attribute__((packed)) SensorPacket { // Use packed to potentially avoid padding issues
-    float accel_x;
-    float accel_y;
-    float accel_z;
-    float gyro_x;
-    float gyro_y;
-    float gyro_z;
+struct __attribute__((packed)) SensorPacket {
     int32_t encoder_ticks;
 };
-// --- End Protocol Definition ---
+
+// Arduino -> Pi Heartbeat Ping
+const uint8_t ARDUINO_TO_PI_HEARTBEAT_PING = 0xC1; // Expected by arduino_ros_bridge.py
+const uint8_t PI_TO_ARDUINO_HEARTBEAT_PONG = 0xD1; // Arduino can listen for this if needed
 
 // Function Prototypes
 void setupSerial();
-void setupIMU();
 void setupActuators();
 void setupEncoder();
 void handleSerialCommands();
-void sendSensorData();
-void readIMUData();
+void sendSensorDataAndPing(); // Modified function name
 uint8_t calculateChecksum(const uint8_t* data, size_t len);
 void applyCommands(int16_t steering, int16_t throttle);
 
@@ -71,8 +61,6 @@ void applyCommands(int16_t steering, int16_t throttle);
 void encoderInterrupt() {
     unsigned long now = micros();
     if (now - lastEncoderInterruptTime > ENCODER_DEBOUNCE_TIME_MICROS) {
-        // Basic counting - assumes direction is known from throttle command
-        // For quadrature, you would read PIN_B here to determine direction
         encoderCount += currentDirection;
         lastEncoderInterruptTime = now;
     }
@@ -80,54 +68,42 @@ void encoderInterrupt() {
 
 // --- Setup ---
 void setup() {
-    // Initialize debug serial if needed (optional)
-    // Serial.begin(9600);
-    // while (!Serial); // Wait for Serial Monitor
-    // Serial.println("Arduino Setup Started");
-
     setupSerial();
-    setupIMU();
     setupActuators();
     setupEncoder();
 
     lastSensorSendTime = millis();
-    RPiSerial.println("READY"); // Send simple ready signal on startup
-    // Serial.println("Arduino Setup Complete");
+    // RPiSerial.println("ARDUINO_READY"); // You can keep this, but the 0xC1 ping is crucial for the Python script's current logic
 }
 
 // --- Main Loop ---
+// --- Main Loop ---
 void loop() {
-    handleSerialCommands(); // Check for incoming commands from RPi
+    handleSerialCommands();
 
     unsigned long now = millis();
     if (now - lastSensorSendTime >= SENSOR_SEND_INTERVAL_MS) {
-        readIMUData();      // Read the latest IMU values
-        sendSensorData();   // Send the sensor packet to the RPi
+        sendSensorDataAndPing();   // Send the sensor packet and heartbeat ping to the RPi
         lastSensorSendTime = now;
     }
 
-    // Add short delay if needed, but keep loop fast
-    // delay(1);
+    // PROBLEM BLOCK REMOVED:
+    /*
+    // Listen for PONG if you want the Arduino to also verify Pi's connection
+    if (RPiSerial.available() > 0) {
+        uint8_t incomingByte = RPiSerial.read();
+        if (incomingByte == PI_TO_ARDUINO_HEARTBEAT_PONG) {
+            // Optional: Acknowledge PONG received, e.g., blink an LED
+        }
+        // Note: This simple PONG check might interfere if PONG is sent amidst other packet data.
+        // For robust bidirectional heartbeat, integrate PONG checking into the command parser or a separate state.
+    }
+    */
 }
 
 // --- Initialization Functions ---
 void setupSerial() {
     RPiSerial.begin(BAUD_RATE_PI);
-    // Serial.println("RPi Serial Initialized at 115200");
-}
-
-void setupIMU() {
-    if (!IMU.begin()) {
-        // Serial.println("ERROR: IMU initialization failed!");
-        while (1); // Halt execution if IMU fails critical component
-    }
-    // Serial.print("Accelerometer sample rate = ");
-    // Serial.print(IMU.accelerationSampleRate());
-    // Serial.println(" Hz");
-    // Serial.print("Gyroscope sample rate = ");
-    // Serial.print(IMU.gyroscopeSampleRate());
-    // Serial.println(" Hz");
-    // Serial.println("IMU Initialized");
 }
 
 void setupActuators() {
@@ -138,14 +114,11 @@ void setupActuators() {
     pinMode(DIRECTION_PIN, OUTPUT);
     digitalWrite(DIRECTION_PIN, HIGH); // Default forward
     analogWrite(SERVO_THROTTLE_PIN, 0); // Start stopped
-
-    // Serial.println("Actuators Initialized");
 }
 
 void setupEncoder() {
-    pinMode(ENCODER_PIN_A, INPUT); // Use INPUT or INPUT_PULLUP/PULLDOWN depending on encoder hardware
+    pinMode(ENCODER_PIN_A, INPUT);
     attachInterrupt(digitalPinToInterrupt(ENCODER_PIN_A), encoderInterrupt, RISING);
-    // Serial.println("Encoder Initialized");
 }
 
 // --- Communication Functions ---
@@ -166,121 +139,108 @@ void handleSerialCommands() {
     while (RPiSerial.available() > 0) {
         uint8_t incomingByte = RPiSerial.read();
 
+        // Allow PONG byte to be consumed without disrupting command parsing
+        // if (incomingByte == PI_TO_ARDUINO_HEARTBEAT_PONG) {
+        //     continue; // Or handle it as mentioned in loop()
+        // }
+
         switch (state) {
             case IDLE:
-                if (incomingByte == CMD_START_BYTE_1) {
-                    state = GOT_START1;
-                }
+                if (incomingByte == CMD_START_BYTE_1) state = GOT_START1;
                 break;
             case GOT_START1:
                 if (incomingByte == CMD_START_BYTE_2) {
                     state = GOT_START2;
                     bytesRead = 0;
+                } else if (incomingByte == CMD_START_BYTE_1) {
+                    // Stay in GOT_START1 if another start byte 1 is received
                 } else {
-                    state = IDLE; // Incorrect sequence, reset
+                    state = IDLE;
                 }
                 break;
-            case GOT_START2: // Reading data payload
+            case GOT_START2:
                 if (bytesRead < sizeof(CommandPacket)) {
                     cmdbuffer[bytesRead++] = incomingByte;
                     if (bytesRead == sizeof(CommandPacket)) {
-                       state = READING_DATA; // Transition to reading checksum
+                       state = READING_DATA;
                     }
                 }
-                 // If too many bytes arrive somehow before checksum byte, error state? For now just wait for checksum.
                 break;
-           case READING_DATA: // Reading the checksum byte
+           case READING_DATA:
                 uint8_t receivedChecksum = incomingByte;
-                uint8_t calculatedChecksum = calculateChecksum(cmdbuffer, sizeof(CommandPacket));
 
+                // --- ADD DEBUGGING HERE ---
+                Serial.print("Potential packet data (before checksum): "); // Use USB Serial for this debug
+                for(int k=0; k < sizeof(CommandPacket); k++) {
+                    Serial.print(cmdbuffer[k], HEX);
+                    Serial.print(" ");
+                }
+                Serial.print(" | Received Checksum: ");
+                Serial.println(receivedChecksum, HEX);
+                // --- END DEBUGGING ---
+            
+                uint8_t calculatedChecksum = calculateChecksum(cmdbuffer, sizeof(CommandPacket));
+            
                 if (receivedChecksum == calculatedChecksum) {
-                    // Checksum matches, process command
                     CommandPacket cmd;
                     memcpy(&cmd, cmdbuffer, sizeof(CommandPacket));
+                    // --- ADD MORE DEBUGGING ---
+                    Serial.print("CHECKSUM OK. Applying cmd: Steer=");
+                    Serial.print(cmd.steering_angle);
+                    Serial.print(", Throttle=");
+                    Serial.println(cmd.throttle_speed);
+                    // --- END DEBUGGING ---
                     applyCommands(cmd.steering_angle, cmd.throttle_speed);
-                    // Serial.print("CMD RX: Steer="); Serial.print(cmd.steering_angle);
-                    // Serial.print(" Throttle="); Serial.println(cmd.throttle_speed);
                 } else {
-                    // Checksum mismatch
-                    // Serial.print("WARN: Checksum mismatch. Got: "); Serial.print(receivedChecksum);
-                    // Serial.print(" Calculated: "); Serial.println(calculatedChecksum);
+                    // --- ADD DEBUGGING FOR CHECKSUM FAIL ---
+                    Serial.print("CHECKSUM FAIL! Calc: ");
+                    Serial.print(calculatedChecksum, HEX);
+                    Serial.print(", Recv: ");
+                    Serial.println(receivedChecksum, HEX);
+                    // --- END DEBUGGING ---
                 }
-                state = IDLE; // Reset state machine
+                state = IDLE;
                 break;
         }
     }
 }
 
-void sendSensorData() {
-    SensorPacket packet;
-    packet.accel_x = accX;
-    packet.accel_y = accY;
-    packet.accel_z = accZ;
-    packet.gyro_x = gyroX;
-    packet.gyro_y = gyroY;
-    packet.gyro_z = gyroZ;
+void sendSensorDataAndPing() {
+    // 1. Send the Heartbeat PING
+    RPiSerial.write(ARDUINO_TO_PI_HEARTBEAT_PING);
 
-    // Atomically read volatile encoder count
+    // 2. Send the Sensor Packet
+    SensorPacket packet;
     noInterrupts();
     packet.encoder_ticks = encoderCount;
     interrupts();
 
-    uint8_t buffer[sizeof(SensorPacket)];
-    memcpy(buffer, &packet, sizeof(SensorPacket));
-    uint8_t checksum = calculateChecksum(buffer, sizeof(SensorPacket));
+    uint8_t sensor_payload_buffer[sizeof(SensorPacket)];
+    memcpy(sensor_payload_buffer, &packet, sizeof(SensorPacket));
+    uint8_t checksum = calculateChecksum(sensor_payload_buffer, sizeof(SensorPacket));
 
-    // Send start bytes, data, and checksum
     uint8_t startBytes[] = {SENSOR_START_BYTE_1, SENSOR_START_BYTE_2};
     RPiSerial.write(startBytes, sizeof(startBytes));
-    RPiSerial.write((uint8_t*)&packet, sizeof(SensorPacket)); // Send the packet data
-    RPiSerial.write(&checksum, 1);                            // Send the checksum
-    // Serial.print("."); // Indicate sending data for debugging
-}
-
-
-// --- Sensor & Actuator Functions ---
-
-void readIMUData() {
-    // Only read if data is available to avoid blocking
-    if (IMU.accelerationAvailable()) {
-        IMU.readAcceleration(accX, accY, accZ); // Read in m/s^2
-    }
-    if (IMU.gyroscopeAvailable()) {
-        IMU.readGyroscope(gyroX, gyroY, gyroZ); // Read in degrees/sec
-
-        // Convert gyro data from degrees/sec to radians/sec for ROS standard
-        gyroX = radians(gyroX);
-        gyroY = radians(gyroY);
-        gyroZ = radians(gyroZ);
-    }
-    // Magnetometer data is not included in the protocol, but could be read here:
-    // if (IMU.magneticFieldAvailable()) {
-    //     IMU.readMagneticField(magX, magY, magZ); // Read in micro-Tesla (uT)
-    // }
+    RPiSerial.write((uint8_t*)&packet, sizeof(SensorPacket));
+    RPiSerial.write(&checksum, 1);
 }
 
 void applyCommands(int16_t steering, int16_t throttle) {
-    // Steering Control
-    // Clamp steering angle to valid servo range (adjust if servo range is different)
     int16_t servoAngle = constrain(steering, 0, 180);
     servoSteering.write(servoAngle);
 
-    // Throttle Control
     int16_t motorSpeed = constrain(throttle, -255, 255);
 
-    // Update global direction based on command for encoder ISR
-    // Use a small deadzone around 0 if needed
     if (motorSpeed > 10) {
-      currentDirection = 1; // Forward
-      digitalWrite(DIRECTION_PIN, HIGH); // Set direction pin HIGH for forward
-      analogWrite(SERVO_THROTTLE_PIN, motorSpeed); // Set PWM speed
+      currentDirection = 1;
+      digitalWrite(DIRECTION_PIN, HIGH);
+      analogWrite(SERVO_THROTTLE_PIN, motorSpeed);
     } else if (motorSpeed < -10) {
-      currentDirection = -1; // Reverse
-      digitalWrite(DIRECTION_PIN, LOW); // Set direction pin LOW for reverse
-      analogWrite(SERVO_THROTTLE_PIN, abs(motorSpeed)); // Set PWM speed (absolute value)
+      currentDirection = -1;
+      digitalWrite(DIRECTION_PIN, LOW);
+      analogWrite(SERVO_THROTTLE_PIN, abs(motorSpeed));
     } else {
-      // Stop
-      currentDirection = 1; // Keep direction positive when stopped? Or doesn't matter?
-      analogWrite(SERVO_THROTTLE_PIN, 0); // Set PWM speed to 0
+      currentDirection = 1;
+      analogWrite(SERVO_THROTTLE_PIN, 0);
     }
 }

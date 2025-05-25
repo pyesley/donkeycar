@@ -7,10 +7,10 @@ from cv_bridge import CvBridge
 import time
 
 # --- Configuration ---
-IMG_WIDTH = 640
-IMG_HEIGHT = 480
+IMG_WIDTH = 320
+IMG_HEIGHT = 240
 # Let's try a slightly lower framerate to reduce load
-FRAMERATE = 20  # Reduced from 25
+FRAMERATE = 25  # Reduced from 25
 # --- --- --- --- --- ---
 
 class GstCameraPublisher(Node):

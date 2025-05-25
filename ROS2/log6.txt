@@ -1,0 +1,76 @@
+--- Terminal on /dev/ttyACM0 | 115200 8-N-1
+--- Available filters and text transformations: colorize, debug, default, direct, hexlify, log2file, nocontrol, printable, send_on_enter, time
+--- More details at https://bit.ly/pio-monitor-filters
+--- Quit: Ctrl+C | Menu: Ctrl+T | Help: Ctrl+T followed by Ctrl+H
+Potential packet data (before checksum): 0 0 5A A5  | Received Checksum: 5A
+CHECKSUM FAIL! Calc: FF, Recv: 5A
+Potential packet data (before checksum): 0 A5 A5 0  | Received Checksum: 0
+CHECKSUM OK. Applying cmd: Steer=-23296, Throttle=165
+Potential packet data (before checksum): 0 A5 0 0  | Received Checksum: 5A
+CHECKSUM FAIL! Calc: A5, Recv: 5A
+Potential packet data (before checksum): A5 5A 5A 5A  | Received Checksum: 5A
+CHECKSUM FAIL! Calc: FF, Recv: 5A
+Potential packet data (before checksum): 5A 0 D1 5A  | Received Checksum: 0
+CHECKSUM FAIL! Calc: D1, Recv: 0
+Potential packet data (before checksum): 5A 5A 0 0  | Received Checksum: 5A
+CHECKSUM FAIL! Calc: 0, Recv: 5A
+Potential packet data (before checksum): 5A 5A D1 5A  | Received Checksum: 0
+CHECKSUM FAIL! Calc: 8B, Recv: 0
+Potential packet data (before checksum): 0 0 5A 5A  | Received Checksum: 5A
+CHECKSUM FAIL! Calc: 0, Recv: 5A
+Potential packet data (before checksum): 5A D1 0 0  | Received Checksum: 0
+CHECKSUM FAIL! Calc: 8B, Recv: 0
+Potential packet data (before checksum): 0 D1 5A 5A  | Received Checksum: 0
+CHECKSUM FAIL! Calc: D1, Recv: 0
+Potential packet data (before checksum): A5 0 5A 5A  | Received Checksum: D1
+CHECKSUM FAIL! Calc: A5, Recv: D1
+Potential packet data (before checksum): 5A 0 0 5A  | Received Checksum: 0
+CHECKSUM OK. Applying cmd: Steer=90, Throttle=23040
+Potential packet data (before checksum): 0 0 0 0  | Received Checksum: D1
+CHECKSUM FAIL! Calc: 0, Recv: D1
+Potential packet data (before checksum): A5 5A 0 5A  | Received Checksum: 5A
+CHECKSUM FAIL! Calc: A5, Recv: 5A
+Potential packet data (before checksum): 5A 0 5A 5A  | Received Checksum: 5A
+CHECKSUM OK. Applying cmd: Steer=90, Throttle=23130
+Potential packet data (before checksum): D1 A5 0 A5  | Received Checksum: 0
+CHECKSUM FAIL! Calc: D1, Recv: 0
+Potential packet data (before checksum): 5A 0 A5 5A  | Received Checksum: D1
+CHECKSUM FAIL! Calc: A5, Recv: D1
+Potential packet data (before checksum): 5A 0 A5 0  | Received Checksum: 5A
+CHECKSUM FAIL! Calc: FF, Recv: 5A
+Potential packet data (before checksum): 0 A5 0 0  | Received Checksum: 5A
+CHECKSUM FAIL! Calc: A5, Recv: 5A
+Potential packet data (before checksum): 5A 5A 5A 5A  | Received Checksum: 5A
+CHECKSUM FAIL! Calc: 0, Recv: 5A
+Potential packet data (before checksum): A5 5A 5A A5  | Received Checksum: 0
+CHECKSUM OK. Applying cmd: Steer=23205, Throttle=-23206
+Potential packet data (before checksum): 5A 5A 0 0  | Received Checksum: 0
+CHECKSUM OK. Applying cmd: Steer=23130, Throttle=0
+Potential packet data (before checksum): 0 0 A5 0  | Received Checksum: 5A
+CHECKSUM FAIL! Calc: A5, Recv: 5A
+Potential packet data (before checksum): D1 A5 5A A5  | Received Checksum: 0
+CHECKSUM FAIL! Calc: 8B, Recv: 0
+Potential packet data (before checksum): A5 0 D1 D1  | Received Checksum: 5A
+CHECKSUM FAIL! Calc: A5, Recv: 5A
+Potential packet data (before checksum): 0 A5 0 5A  | Received Checksum: 0
+CHECKSUM FAIL! Calc: FF, Recv: 0
+Potential packet data (before checksum): A5 D1 5A D1  | Received Checksum: 5A
+CHECKSUM FAIL! Calc: FF, Recv: 5A
+Potential packet data (before checksum): D1 0 5A 0  | Received Checksum: 0
+CHECKSUM FAIL! Calc: 8B, Recv: 0
+Potential packet data (before checksum): A5 D1 0 5A  | Received Checksum: D1
+CHECKSUM FAIL! Calc: 2E, Recv: D1
+Potential packet data (before checksum): 0 5A 5A 0  | Received Checksum: 5A
+CHECKSUM FAIL! Calc: 0, Recv: 5A
+Potential packet data (before checksum): 5A 5A 5A D1  | Received Checksum: 5A
+CHECKSUM FAIL! Calc: 8B, Recv: 5A
+Potential packet data (before checksum): D1 D1 0 0  | Received Checksum: 5A
+CHECKSUM FAIL! Calc: 0, Recv: 5A
+Potential packet data (before checksum): D1 0 A5 0  | Received Checksum: 5A
+CHECKSUM FAIL! Calc: 74, Recv: 5A
+Potential packet data (before checksum): 5A 0 0 A5  | Received Checksum: 0
+CHECKSUM FAIL! Calc: FF, Recv: 0
+Potential packet data (before checksum): A5 0 0 0  | Received Checksum: 0
+CHECKSUM FAIL! Calc: A5, Recv: 0
+Potential packet data (before checksum): A5 A5 5A 5A  | Received Checksum: 5A
+CHECKSUM FAIL! Calc: 0, Recv: 5A
