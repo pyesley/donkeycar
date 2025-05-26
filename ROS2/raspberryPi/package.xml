@@ -1,0 +1,33 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>raspberry_pi_cpp_nodes</name>
+  <version>0.1.0</version>
+  <description>C++ nodes for Raspberry Pi interfacing, converted from Python (arduino_ros_bridge, camerastream, IMU_6050).</description>
+  <maintainer email="robotics@example.com">Robotics Team</maintainer>
+  <license>Apache License 2.0</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <depend>rclcpp</depend>
+  <depend>std_msgs</depend>
+  <depend>sensor_msgs</depend>
+  <depend>geometry_msgs</depend>
+  <depend>nav_msgs</depend>
+  <depend>tf2_geometry_msgs</depend>
+  <depend>cv_bridge</depend>
+  <depend>rcl_interfaces</depend>
+
+  <!-- Build dependencies that are not also exec dependencies can be listed here -->
+  <!-- <build_depend>...</build_depend> -->
+
+  <!-- Exec dependencies that are not also build dependencies can be listed here -->
+  <!-- <exec_depend>...</exec_depend> -->
+
+  <!-- Test dependencies -->
+  <!-- <test_depend>ament_lint_auto</test_depend> -->
+  <!-- <test_depend>ament_cmake_gtest</test_depend> -->
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>
