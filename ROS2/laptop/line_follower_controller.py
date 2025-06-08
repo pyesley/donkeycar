@@ -26,7 +26,7 @@ PID_KP = -.01
 PID_KI = 0.00
 PID_KD = 0.01
 PID_SAMPLE_TIME = 1.0 / 15.0
-DEFAULT_MAX_ANGULAR_SPEED = 1.0
+DEFAULT_MAX_ANGULAR_SPEED = .2
 
 class LineFollowerController:
     """
