@@ -2,21 +2,19 @@
 #include "rclcpp/executors/multi_threaded_executor.hpp"
 #include "rpi_ros2_cpp_nodes/arduino_ros_bridge_node.hpp"
 #include "rpi_ros2_cpp_nodes/camera_stream_node.hpp"
-#include "rpi_ros2_cpp_nodes/imu_6050_node.hpp"
-#include <memory> // For std::make_shared
+#include "rpi_ros2_cpp_nodes/imu_bmi088_node.hpp" // <-- UPDATED INCLUDE
+#include <memory>
 
 int main(int argc, char * argv[]) {
     rclcpp::init(argc, argv);
 
-    // Use MultiThreadedExecutor to allow multiple nodes/callbacks to run concurrently
     rclcpp::executors::MultiThreadedExecutor executor;
 
     std::shared_ptr<ArduinoBridgeNode> arduino_node = nullptr;
     std::shared_ptr<CameraStreamNode> camera_node = nullptr;
-    std::shared_ptr<Imu6050Node> imu_node = nullptr;
+    std::shared_ptr<ImuBmi088Node> imu_node = nullptr; // <-- UPDATED TYPE
 
     try {
-
         RCLCPP_INFO(rclcpp::get_logger("main"), "Initializing ArduinoBridgeNode...");
         arduino_node = std::make_shared<ArduinoBridgeNode>();
         executor.add_node(arduino_node);
@@ -27,42 +25,21 @@ int main(int argc, char * argv[]) {
         executor.add_node(camera_node);
         RCLCPP_INFO(rclcpp::get_logger("main"), "CameraStreamNode added to executor.");
 
-        RCLCPP_INFO(rclcpp::get_logger("main"), "Initializing Imu6050Node...");
-        imu_node = std::make_shared<Imu6050Node>();
+        // --- UPDATED IMU NODE INITIALIZATION ---
+        RCLCPP_INFO(rclcpp::get_logger("main"), "Initializing ImuBmi088Node...");
+        imu_node = std::make_shared<ImuBmi088Node>(); // <-- CREATE NEW NODE TYPE
         executor.add_node(imu_node);
-        RCLCPP_INFO(rclcpp::get_logger("main"), "Imu6050Node added to executor.");
+        RCLCPP_INFO(rclcpp::get_logger("main"), "ImuBmi088Node added to executor.");
+        // --- END OF UPDATES ---
 
-        RCLCPP_INFO(rclcpp::get_logger("main"), "Nodes added to executor. Spinning...");
+        RCLCPP_INFO(rclcpp::get_logger("main"), "All nodes added to executor. Spinning...");
         executor.spin();
 
-    } catch (const rclcpp::exceptions::RCLError & e) {
-        RCLCPP_FATAL(rclcpp::get_logger("main"), "RCLCPP error: %s", e.what());
-    } catch (const std::runtime_error & e) {
-        RCLCPP_FATAL(rclcpp::get_logger("main"), "Runtime error during node initialization or execution: %s", e.what());
     } catch (const std::exception & e) {
-        RCLCPP_FATAL(rclcpp::get_logger("main"), "Unhandled C++ exception: %s", e.what());
-    } catch (...) {
-        RCLCPP_FATAL(rclcpp::get_logger("main"), "Unknown exception caught in main.");
+        RCLCPP_FATAL(rclcpp::get_logger("main"), "Unhandled exception in main: %s", e.what());
     }
 
-    RCLCPP_INFO(rclcpp::get_logger("main"), "Shutting down executor...");
-    // Note: MultiThreadedExecutor doesn't have a shutdown() method
-    // The executor will stop when spin() returns or when rclcpp::shutdown() is called
-
-    // Node destruction will be handled by shared_ptr going out of scope
-    // or can be explicitly reset.
-    // arduino_node.reset();
-    // camera_node.reset();
-    // imu_node.reset();
-    // RCLCPP_INFO(rclcpp::get_logger("main"), "Nodes destroyed (or will be by shared_ptr).");
-
-    if (rclcpp::ok()) {
-        RCLCPP_INFO(rclcpp::get_logger("main"), "Shutting down RCLCPP.");
-        rclcpp::shutdown();
-    } else {
-        RCLCPP_WARN(rclcpp::get_logger("main"), "RCLCPP was already shut down or not OK.");
-    }
-
-    RCLCPP_INFO(rclcpp::get_logger("main"), "Main program finished.");
+    RCLCPP_INFO(rclcpp::get_logger("main"), "Shutting down.");
+    rclcpp::shutdown();
     return 0;
 }

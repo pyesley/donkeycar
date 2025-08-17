@@ -21,7 +21,8 @@ import numpy as np
 # --- Configuration ---
 MAX_PLOT_POINTS = 200  # Number of points for rolling plots
 CAMERA_TOPIC = '/camera/image_raw'
-IMU_TOPIC = '/imu/data_raw_mpu6050'
+# --- UPDATED the IMU topic to match your new node ---
+IMU_TOPIC = '/imu/data_raw_bmi088'
 ENCODER_TOPIC = '/encoder_ticks'
 CMD_VEL_TOPIC = '/cmd_vel'
 PUBLISH_RATE_HZ = 10.0 # Rate to continuously publish commands
