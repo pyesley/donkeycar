@@ -26,7 +26,8 @@ import numpy as np
 # --- Configuration ---
 MAX_PLOT_POINTS = 200
 CAMERA_TOPIC = '/camera/image_raw'
-IMU_TOPIC = '/imu/data_raw_mpu6050'
+# --- UPDATED the IMU topic to match your new node ---
+IMU_TOPIC = '/imu/data_raw_bmi088'
 ENCODER_TOPIC = '/encoder_ticks' # Topic for raw ticks if still plotted
 # ODOM_TOPIC = '/odom' # If you switched to publishing Odometry
 CMD_VEL_TOPIC = '/cmd_vel'
