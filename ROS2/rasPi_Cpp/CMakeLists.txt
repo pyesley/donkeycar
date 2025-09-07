@@ -10,6 +10,7 @@ endif()
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(std_msgs REQUIRED)
+find_package(std_srvs REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(nav_msgs REQUIRED)
 find_package(cv_bridge REQUIRED)
@@ -22,6 +23,7 @@ add_executable(rpi_main_nodes
   src/arduino_ros_bridge_node.cpp
   src/camera_stream_node.cpp
   src/imu_bmi088_node.cpp
+  src/rplidar_node.cpp
 )
 
 # Tell the compiler to look in the local "include" folder
@@ -34,6 +36,7 @@ target_include_directories(rpi_main_nodes PUBLIC
 ament_target_dependencies(rpi_main_nodes
   rclcpp
   std_msgs
+  std_srvs
   sensor_msgs
   nav_msgs
   cv_bridge
