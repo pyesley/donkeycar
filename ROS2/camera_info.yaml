@@ -1,0 +1,27 @@
+image_width: 640
+image_height: 480
+camera_name: learner_cam
+camera_matrix:
+  rows: 3
+  cols: 3
+  data: [342.26980237, 0.0, 319.01371778,
+         0.0, 341.77689405, 227.03261759,
+         0.0, 0.0, 1.0]
+distortion_model: plumb_bob
+distortion_coefficients:
+  rows: 1
+  cols: 5
+  data: [-0.27118582, 0.06569126, 0.00206319, -0.00062127, 0.0]
+# No stereo, so rectification is identity and P is just K with a zero Tx
+rectification_matrix:
+  rows: 3
+  cols: 3
+  data: [1.0, 0.0, 0.0,
+         0.0, 1.0, 0.0,
+         0.0, 0.0, 1.0]
+projection_matrix:
+  rows: 3
+  cols: 4
+  data: [342.26980237, 0.0, 319.01371778, 0.0,
+         0.0, 341.77689405, 227.03261759, 0.0,
+         0.0, 0.0, 1.0, 0.0]

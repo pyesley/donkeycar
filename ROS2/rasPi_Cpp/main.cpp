@@ -17,11 +17,12 @@ int main(int argc, char * argv[]) {
     std::shared_ptr<RplidarNode> rplidar_node = nullptr; // <-- NEW NODE
 
     try {
+        
         RCLCPP_INFO(rclcpp::get_logger("main"), "Initializing ArduinoBridgeNode...");
         arduino_node = std::make_shared<ArduinoBridgeNode>();
         executor.add_node(arduino_node);
         RCLCPP_INFO(rclcpp::get_logger("main"), "ArduinoBridgeNode added to executor.");
-
+        
         RCLCPP_INFO(rclcpp::get_logger("main"), "Initializing CameraStreamNode...");
         camera_node = std::make_shared<CameraStreamNode>();
         executor.add_node(camera_node);
@@ -32,12 +33,12 @@ int main(int argc, char * argv[]) {
         executor.add_node(imu_node);
         RCLCPP_INFO(rclcpp::get_logger("main"), "ImuBmi088Node added to executor.");
 
-        // --- NEW RPLIDAR NODE INITIALIZATION ---
+/*
         RCLCPP_INFO(rclcpp::get_logger("main"), "Initializing RplidarNode...");
         rplidar_node = std::make_shared<RplidarNode>();
         executor.add_node(rplidar_node);
         RCLCPP_INFO(rclcpp::get_logger("main"), "RplidarNode added to executor.");
-        // --- END OF NEW ADDITIONS ---
+ */       
 
         RCLCPP_INFO(rclcpp::get_logger("main"), "All nodes added to executor. Spinning...");
         executor.spin();
