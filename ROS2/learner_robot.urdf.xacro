@@ -1,0 +1,43 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="learner_robot">
+
+  <!-- Base body -->
+  <link name="base_link"/>
+
+  <!-- IMU chosen as the base origin (you can change later) -->
+  <link name="imu_link"/>
+  <joint name="base_to_imu" type="fixed">
+    <parent link="base_link"/>
+    <child link="imu_link"/>
+    <!-- TEMP: replace with learned imu pose in base later -->
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+  </joint>
+
+  <!-- Camera body frame (x forward, y left, z up) -->
+  <link name="camera_link"/>
+  <joint name="imu_to_camera" type="fixed">
+    <parent link="imu_link"/>
+    <child link="camera_link"/>
+    <!-- TEMP: fill from Kalibr output (imu->cam) -->
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+  </joint>
+
+  <!-- Optical frame (REP 103): z forward, x right, y down -->
+  <link name="camera_optical_frame"/>
+  <joint name="camera_to_optical" type="fixed">
+    <parent link="camera_link"/>
+    <child link="camera_optical_frame"/>
+    <!-- Rotation from camera_link to optical frame: R = Rz(-90°) * Rx(-90°) -->
+    <origin xyz="0 0 0" rpy="-1.57079632679 0 -1.57079632679"/>
+  </joint>
+
+  <!-- 2D lidar frame (e.g., RPLidar) -->
+  <link name="laser"/>
+  <joint name="camera_to_laser" type="fixed">
+    <parent link="camera_link"/>
+    <child link="laser"/>
+    <!-- TEMP: fill from cam↔lidar calibration -->
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+  </joint>
+
+</robot>

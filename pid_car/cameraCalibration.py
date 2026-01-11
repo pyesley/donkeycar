@@ -2,13 +2,19 @@ import cv2
 import numpy as np
 from picamera2 import Picamera2
 
-#Camera matrix (K):
-cameraMatrix = [[700.32833455,   0.,         633.7861054 ],
-     [  0.,         703.47654591, 342.84793261],
-     [  0.,           0.,           1.        ]]
-#Distortion coefficients:
-distCoeffs = [[-0.30944433,  0.1258339,  -0.00045581, -0.00057164, -0.01383379]]
-#RMS re-projection error: 0.2227
+'''
+=== Calibration Complete! ===
+Final RMS re-projection error: 0.2854
+Excellent calibration quality!
+
+Camera matrix (K):
+[[342.26980237   0.         319.01371778]
+ [  0.         341.77689405 227.03261759]
+ [  0.           0.           1.        ]]
+
+Distortion coefficients:
+[[-0.27118582  0.06569126  0.00206319 -0.00062127  0.        ]]
+'''
 
 
 def get_checkerboard_plane_points_2d(pattern_size, square_size):
@@ -58,7 +64,7 @@ def phase2_homography_estimation(cameraMatrix, distCoeffs,
     all_image_pts = []  # 2D image coords (u, v)
 
     picam2 = Picamera2()
-    config = picam2.create_still_configuration(main={"size": (1280, 720)})
+    config = picam2.create_still_configuration(main={"size": (640, 480)})
     picam2.configure(config)
     picam2.start()
 
@@ -79,10 +85,10 @@ def phase2_homography_estimation(cameraMatrix, distCoeffs,
         display_frame = frame
 
         # Text overlay for live feed
-        cv2.putText(display_frame, f"Captures: {capture_count}", (10,30),
-                    cv2.FONT_HERSHEY_SIMPLEX, 1, (0,255,0), 2)
-        cv2.putText(display_frame, "Press 'c' to capture, 'f' to finish, 'q' to quit", (10,70),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0,255,0), 2)
+        #cv2.putText(display_frame, f"Captures: {capture_count}", (10,30),
+        #            cv2.FONT_HERSHEY_SIMPLEX, 1, (0,255,0), 2)
+        #cv2.putText(display_frame, "Press 'c' to capture, 'f' to finish, 'q' to quit", (10,70),
+        #            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0,255,0), 2)
 
         cv2.imshow('Homography Estimation - Live Feed', display_frame)
         key = cv2.waitKey(1) & 0xFF
@@ -114,6 +120,7 @@ def phase2_homography_estimation(cameraMatrix, distCoeffs,
                 for corner, board_pt in zip(corners_refined.reshape(-1,2), board_points_2d):
                     pt = (int(corner[0]), int(corner[1]))
                     text = f"({board_pt[0]:.1f},{board_pt[1]:.1f})"
+                    #print( text )
                     # Offset the text so it doesn't cover the corner marker
                     cv2.putText(tmp_detect, text, (pt[0] + 5, pt[1] - 5),
                                 cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0,0,255), 1, cv2.LINE_AA)
@@ -176,73 +183,166 @@ def phase2_homography_estimation(cameraMatrix, distCoeffs,
     return None, None
 
 
-
 def cameraCalibraion():
     pattern_size = (5, 7)
-    square_size = 3.0 #cm?
+    square_size = 3.0  # cm - measure this accurately with calipers!
 
-    objp = np.zeros((pattern_size[0]*pattern_size[1], 3), np.float32)
-    objp[:, :2] = np.mgrid[0:pattern_size[0],0:pattern_size[1]].T.reshape(-1, 2)
+    # Create object points
+    objp = np.zeros((pattern_size[0] * pattern_size[1], 3), np.float32)
+    objp[:, :2] = np.mgrid[0:pattern_size[0], 0:pattern_size[1]].T.reshape(-1, 2)
     objp *= square_size
 
     objpoints = []
     imgpoints = []
+    captured_frames = []  # Store frames for potential re-analysis
 
     picam2 = Picamera2()
-    config = picam2.create_still_configuration(main={"size": (1280, 720)})
+    config = picam2.create_still_configuration(main={"size": (640, 480)})
     picam2.configure(config)
+
+
     picam2.start()
 
-    print("Camera Calibration Routine!")
+    print("Enhanced Camera Calibration Routine!")
     print("Press 'c' to capture, 'f' to finish calibration, 'q' to quit.")
-    print("You need at least 10 captures.")
+    print("Recommended: Capture 20-30 images with varied angles and positions")
+    print("Wait for camera to stabilize before each capture.\n")
 
     capture_count = 0
+    MIN_CAPTURES = 15  # Increased from 10
+
+    # More stringent corner refinement criteria
+    criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 100, 0.0001)
+
     while True:
         frame = picam2.capture_array()
-        frame= cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)  # weird linux thing
-        cv2.putText(frame, f"Captures: {capture_count}", (10,30),
-                    cv2.FONT_HERSHEY_SIMPLEX, 1, (0,255,0), 2)
-        cv2.putText(frame, "Press 'c' to capture, 'f' to finish, 'q' to quit", (10,70),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0,255,0), 2)
+        frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
-        cv2.imshow('Calibration - Live Feed', frame)
+        # Display info on frame
+        display_frame = frame.copy()
+        #cv2.putText(display_frame, f"Captures: {capture_count}/{MIN_CAPTURES} (recommended: 20-30)",
+        #            (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
+        #cv2.putText(display_frame, "Press 'c' to capture, 'f' to finish, 'q' to quit",
+        #            (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
+
+        cv2.imshow('Calibration - Live Feed', display_frame)
         key = cv2.waitKey(1) & 0xFF
 
         if key == ord('c'):
+            print("Stabilizing... hold steady...")
+            cv2.waitKey(500)  # Wait for camera to stabilize
+
+            # Capture a fresh frame after stabilization
+            frame = picam2.capture_array()
+            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+
             gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
             ret_corners, corners = cv2.findChessboardCorners(gray, pattern_size, None)
+
             if ret_corners:
-                criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.001)
-                corners_refined = cv2.cornerSubPix(gray, corners, (11,11), (-1,-1), criteria)
+                # Larger window for corner refinement (15x15 instead of 11x11)
+                corners_refined = cv2.cornerSubPix(gray, corners, (15, 15), (-1, -1), criteria)
+
                 objpoints.append(objp)
                 imgpoints.append(corners_refined)
+                captured_frames.append(frame.copy())
                 capture_count += 1
+
                 print(f"Captured image {capture_count} with valid corners!")
+
+                # Show detected corners
                 detected_frame = frame.copy()
                 cv2.drawChessboardCorners(detected_frame, pattern_size, corners_refined, True)
                 cv2.imshow('Detected Corners', detected_frame)
                 cv2.waitKey(500)
                 cv2.destroyWindow('Detected Corners')
-                if capture_count >= 10:
-                    print("Press 'f' to finish calibration or keep capturing more images.")
+
+                if capture_count >= MIN_CAPTURES:
+                    print(
+                        f"Minimum captures reached. Press 'f' to calibrate or continue capturing (recommended: 20-30 total)")
             else:
-                print("No corners detected. Try again.")
+                print("No corners detected. Tips:")
+                print("  - Ensure good lighting and focus")
+                print("  - Keep checkerboard flat and fully visible")
+                print("  - Try different angles")
 
         elif key == ord('f'):
-            if capture_count < 10:
-                print("Not enough captures. Need at least 10.")
+            if capture_count < MIN_CAPTURES:
+                print(f"Not enough captures. Need at least {MIN_CAPTURES}.")
             else:
-                print("Calculating camera calibration...")
+                print("\n=== Starting Enhanced Calibration Process ===")
+
+                # Initial calibration with flags
+                print("Step 1: Initial calibration...")
+                flags = cv2.CALIB_FIX_K3  # K3 often not needed, reduces overfitting
+
                 ret_cal, cameraMatrix, distCoeffs, rvecs, tvecs = cv2.calibrateCamera(
-                    objpoints, imgpoints, gray.shape[::-1], None, None
+                    objpoints, imgpoints, gray.shape[::-1], None, None, flags=flags
                 )
-                print("Calibration complete!")
-                print("Camera matrix (K):")
+
+                print(f"Initial RMS re-projection error: {ret_cal:.4f}")
+
+                # Compute individual reprojection errors
+                print("\nStep 2: Computing individual reprojection errors...")
+                errors = []
+                for i in range(len(objpoints)):
+                    imgpoints_reproj, _ = cv2.projectPoints(
+                        objpoints[i], rvecs[i], tvecs[i], cameraMatrix, distCoeffs
+                    )
+                    error = cv2.norm(imgpoints[i], imgpoints_reproj, cv2.NORM_L2) / len(imgpoints_reproj)
+                    errors.append(error)
+                    print(f"  Image {i + 1}: {error:.4f}")
+
+                # Filter out outliers
+                mean_error = np.mean(errors)
+                std_error = np.std(errors)
+                threshold = mean_error + 2 * std_error
+
+                print(f"\nMean error: {mean_error:.4f}, Std: {std_error:.4f}")
+                print(f"Outlier threshold (mean + 2*std): {threshold:.4f}")
+
+                good_indices = [i for i, e in enumerate(errors) if e < threshold]
+                outlier_indices = [i for i, e in enumerate(errors) if e >= threshold]
+
+                if outlier_indices:
+                    print(f"Removing {len(outlier_indices)} outlier images: {[i + 1 for i in outlier_indices]}")
+
+                if len(good_indices) >= MIN_CAPTURES:
+                    objpoints_filtered = [objpoints[i] for i in good_indices]
+                    imgpoints_filtered = [imgpoints[i] for i in good_indices]
+
+                    print(f"\nStep 3: Final calibration with {len(good_indices)} good images...")
+                    ret_cal, cameraMatrix, distCoeffs, rvecs, tvecs = cv2.calibrateCamera(
+                        objpoints_filtered, imgpoints_filtered, gray.shape[::-1],
+                        None, None, flags=flags
+                    )
+
+                    print("\n=== Calibration Complete! ===")
+                    print(f"Final RMS re-projection error: {ret_cal:.4f}")
+
+                    if ret_cal < 0.5:
+                        print("Excellent calibration quality!")
+                    elif ret_cal < 1.0:
+                        print("Good calibration quality.")
+                    else:
+                        print("Warning: High error. Consider recalibrating with better images.")
+                else:
+                    print("\nNot enough images after filtering. Using all images.")
+                    print("\n=== Calibration Complete! ===")
+                    print(f"Final RMS re-projection error: {ret_cal:.4f}")
+
+                print("\nCamera matrix (K):")
                 print(cameraMatrix)
-                print("Distortion coefficients:")
+                print("\nDistortion coefficients:")
                 print(distCoeffs)
-                print(f"RMS re-projection error: {ret_cal:.4f}")
+
+                # Optional: Save calibration data
+                print("\nSaving calibration data to 'camera_calibration.npz'...")
+                np.savez('camera_calibration.npz',
+                         camera_matrix=cameraMatrix,
+                         dist_coeffs=distCoeffs,
+                         rms_error=ret_cal)
+
                 break
 
         elif key == ord('q'):
@@ -252,9 +352,15 @@ def cameraCalibraion():
     cv2.destroyAllWindows()
     picam2.stop()
 
+    # Return the calibration results if needed
+    if 'cameraMatrix' in locals():
+        return cameraMatrix, distCoeffs, ret_cal
+    return None, None, None
+
+
 def main():
-    phase2_homography_estimation(cameraMatrix, distCoeffs)
-    #cameraCalibraion()
+    #phase2_homography_estimation(cameraMatrix, distCoeffs)
+    cameraCalibraion()
 
 
 if __name__ == "__main__":
