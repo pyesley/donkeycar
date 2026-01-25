@@ -10,8 +10,9 @@ CameraStreamNode::CameraStreamNode(const rclcpp::NodeOptions & options)
     build_gstreamer_pipeline();
 
     // QoS profile for sensor data (camera images)
+    // Using RELIABLE for guaranteed delivery over WiFi
     auto qos_profile_sensor_data = rclcpp::QoS(rclcpp::KeepLast(1))
-        .best_effort()
+        .reliable()
         .durability_volatile();
 
     // Publish to pidog/camera/image_raw topic
