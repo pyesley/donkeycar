@@ -15,9 +15,13 @@ CameraStreamNode::CameraStreamNode(const rclcpp::NodeOptions & options)
         .reliable()
         .durability_volatile();
 
-    // Publish to pidog/camera/image_raw topic
+    // Publish to pidog/camera/image_raw topic (uncompressed)
     image_publisher_ = this->create_publisher<sensor_msgs::msg::Image>(
         "pidog/camera/image_raw", qos_profile_sensor_data);
+
+    // Publish compressed images for efficient WiFi transmission
+    compressed_publisher_ = this->create_publisher<sensor_msgs::msg::CompressedImage>(
+        "pidog/camera/image_raw/compressed", qos_profile_sensor_data);
 
     double timer_period_sec = 1.0 / static_cast<double>(framerate_);
     timer_ = this->create_wall_timer(
@@ -35,7 +39,9 @@ CameraStreamNode::CameraStreamNode(const rclcpp::NodeOptions & options)
         throw std::runtime_error("Failed to open GStreamer pipeline in PiDog CameraStreamNode");
     }
 
-    RCLCPP_INFO(this->get_logger(), "PiDog Camera: GStreamer pipeline opened successfully. Publishing to pidog/camera/image_raw");
+    RCLCPP_INFO(this->get_logger(), "PiDog Camera: GStreamer pipeline opened successfully.");
+    RCLCPP_INFO(this->get_logger(), "Publishing uncompressed to: pidog/camera/image_raw");
+    RCLCPP_INFO(this->get_logger(), "Publishing compressed to: pidog/camera/image_raw/compressed (JPEG quality: %d)", jpeg_quality_);
     last_log_time_ = this->get_clock()->now();
 }
 
@@ -54,6 +60,7 @@ void CameraStreamNode::declare_parameters() {
     this->declare_parameter<int>("framerate", FRAMERATE_DEFAULT);
     this->declare_parameter<std::string>("camera_frame_id", "pidog_camera_frame");
     this->declare_parameter<std::string>("gst_pipeline_override", "");
+    this->declare_parameter<int>("jpeg_quality", 80);  // 0-100, higher = better quality
 }
 
 void CameraStreamNode::load_parameters() {
@@ -62,6 +69,7 @@ void CameraStreamNode::load_parameters() {
     this->get_parameter("framerate", framerate_);
     this->get_parameter("camera_frame_id", camera_frame_id_);
     this->get_parameter("gst_pipeline_override", gst_pipeline_string_);
+    this->get_parameter("jpeg_quality", jpeg_quality_);
 }
 
 void CameraStreamNode::build_gstreamer_pipeline() {
@@ -113,9 +121,24 @@ void CameraStreamNode::timer_callback() {
         header.stamp = this->get_clock()->now();
         header.frame_id = camera_frame_id_;
 
+        // Publish uncompressed image (for local use)
         sensor_msgs::msg::Image::SharedPtr img_msg =
             cv_bridge::CvImage(header, "bgr8", frame).toImageMsg();
         image_publisher_->publish(*img_msg);
+
+        // Publish compressed image (for WiFi/laptop viewing)
+        std::vector<uchar> jpeg_buffer;
+        std::vector<int> compression_params;
+        compression_params.push_back(cv::IMWRITE_JPEG_QUALITY);
+        compression_params.push_back(jpeg_quality_);
+
+        if (cv::imencode(".jpg", frame, jpeg_buffer, compression_params)) {
+            auto compressed_msg = std::make_shared<sensor_msgs::msg::CompressedImage>();
+            compressed_msg->header = header;
+            compressed_msg->format = "jpeg";
+            compressed_msg->data = jpeg_buffer;
+            compressed_publisher_->publish(*compressed_msg);
+        }
 
         frame_count_++;
         rclcpp::Time current_time = this->get_clock()->now();

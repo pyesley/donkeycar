@@ -20,10 +20,16 @@ ros2 run pidog_camera pidog_camera_node
 
 ## Topics
 
-- **`pidog/camera/image_raw`** - Raw camera images (sensor_msgs/Image)
+- **`pidog/camera/image_raw`** - Raw uncompressed camera images (sensor_msgs/Image)
   - Frame ID: `pidog_camera_frame`
   - Default resolution: 640x480 @ 30 FPS
   - Format: BGR8
+  - **Use for:** Local processing on PiDog
+
+- **`pidog/camera/image_raw/compressed`** - JPEG compressed images (sensor_msgs/CompressedImage)
+  - Same resolution and frame rate
+  - Format: JPEG (default quality: 80)
+  - **Use for:** Viewing on laptop over WiFi (10-20x smaller!)
 
 ## Parameters
 

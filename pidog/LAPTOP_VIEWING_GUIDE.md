@@ -16,16 +16,17 @@ Your laptop needs:
 ros2 topic list | grep pidog
 
 # You should see:
-# /pidog/camera/image_raw
+# /pidog/camera/image_raw              (uncompressed)
+# /pidog/camera/image_raw/compressed   (JPEG - USE THIS!)
+
+# Monitor frame rate - USE COMPRESSED for WiFi viewing!
+ros2 topic hz /pidog/camera/image_raw/compressed
 
 # Check topic info
-ros2 topic info /pidog/camera/image_raw
-
-# Monitor frame rate
-ros2 topic hz /pidog/camera/image_raw
+ros2 topic info /pidog/camera/image_raw/compressed
 
 # View image data (text)
-ros2 topic echo /pidog/camera/image_raw --no-arr
+ros2 topic echo /pidog/camera/image_raw/compressed --no-arr
 ```
 
 ## Method 1: Using rqt_image_view (Recommended)
@@ -45,8 +46,10 @@ ros2 run rqt_image_view rqt_image_view
 
 **In the GUI:**
 1. Click the dropdown menu at the top
-2. Select `/pidog/camera/image_raw`
-3. Camera stream should appear!
+2. Select `/pidog/camera/image_raw/compressed` (⚠️ USE COMPRESSED!)
+3. Camera stream should appear at ~18-30 FPS!
+
+**Note:** The compressed topic uses JPEG, reducing bandwidth by 10-20x compared to raw images.
 
 ## Method 2: Using image_view
 
@@ -57,9 +60,17 @@ This is a lightweight viewer.
 sudo apt install ros-jazzy-image-view
 ```
 
-### Run
+### Run (for compressed - RECOMMENDED)
 ```bash
 source /opt/ros/jazzy/setup.bash
+ros2 run image_view image_view --ros-args \
+  --remap image:=/pidog/camera/image_raw \
+  --remap image/compressed:=/pidog/camera/image_raw/compressed \
+  -p image_transport:=compressed
+```
+
+Or for uncompressed (slow over WiFi):
+```bash
 ros2 run image_view image_view --ros-args --remap image:=/pidog/camera/image_raw
 ```
 
@@ -150,11 +161,21 @@ ros2 run pidog_camera pidog_camera_node --ros-args \
 
 ## Camera Specifications
 
+### Uncompressed Stream (local use)
 - **Topic:** `/pidog/camera/image_raw`
 - **Message Type:** `sensor_msgs/msg/Image`
-- **Resolution:** 640x480 (default)
-- **Frame Rate:** ~18-20 FPS (actual may vary)
 - **Format:** BGR8
+- **Size:** ~900 KB per frame
+
+### Compressed Stream (WiFi viewing - RECOMMENDED)
+- **Topic:** `/pidog/camera/image_raw/compressed`
+- **Message Type:** `sensor_msgs/msg/CompressedImage`
+- **Format:** JPEG (quality: 80)
+- **Size:** ~40-90 KB per frame (10-20x smaller!)
+
+### Common
+- **Resolution:** 640x480 (default)
+- **Frame Rate:** ~18-30 FPS (actual may vary)
 - **Frame ID:** `pidog_camera_frame`
 
 ## Next Steps
