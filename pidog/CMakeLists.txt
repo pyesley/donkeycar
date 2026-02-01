@@ -29,6 +29,7 @@ add_executable(pidog_node
   src/main.cpp
   src/camera_node.cpp
   src/audio_node.cpp
+  src/imu_node.cpp
 )
 
 # Include directories

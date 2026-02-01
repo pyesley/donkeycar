@@ -5,8 +5,8 @@
  * This is the unified PiDog ROS2 node that runs multiple sub-nodes:
  * - CameraNode: Camera streaming (GStreamer + OpenCV)
  * - AudioNode: Bidirectional audio streaming (ALSA)
+ * - IMUNode: SH3001 6-axis IMU (accelerometer + gyroscope)
  * - ServoNode: Servo control (future)
- * - IMUNode: SH3001 IMU (future)
  *
  * All nodes run in a MultiThreadedExecutor for parallel processing.
  *
@@ -18,6 +18,8 @@
  *   - pidog/camera/image_raw/compressed (sensor_msgs/CompressedImage)
  *   - pidog/audio/capture (std_msgs/UInt8MultiArray)
  *   - pidog/audio/status (std_msgs/String)
+ *   - pidog/imu (sensor_msgs/Imu)
+ *   - pidog/imu/status (std_msgs/String)
  *
  * Topics Subscribed:
  *   - pidog/audio/playback (std_msgs/UInt8MultiArray)
@@ -27,8 +29,8 @@
 #include "rclcpp/executors/multi_threaded_executor.hpp"
 #include "pidog_ros/camera_node.hpp"
 #include "pidog_ros/audio_node.hpp"
+#include "pidog_ros/imu_node.hpp"
 // #include "pidog_ros/servo_node.hpp"  // Future
-// #include "pidog_ros/imu_node.hpp"    // Future
 #include <memory>
 #include <csignal>
 
@@ -53,6 +55,7 @@ int main(int argc, char * argv[]) {
     // Node pointers
     std::shared_ptr<pidog_ros::CameraNode> camera_node = nullptr;
     std::shared_ptr<pidog_ros::AudioNode> audio_node = nullptr;
+    std::shared_ptr<pidog_ros::IMUNode> imu_node = nullptr;
 
     try {
         RCLCPP_INFO(rclcpp::get_logger("pidog_main"), "========================================");
@@ -81,15 +84,21 @@ int main(int argc, char * argv[]) {
                         "AudioNode initialization failed: %s (continuing without audio)", e.what());
         }
 
+        // Initialize IMU Node
+        RCLCPP_INFO(rclcpp::get_logger("pidog_main"), "Initializing IMUNode...");
+        try {
+            imu_node = std::make_shared<pidog_ros::IMUNode>();
+            executor.add_node(imu_node);
+            RCLCPP_INFO(rclcpp::get_logger("pidog_main"), "IMUNode added to executor.");
+        } catch (const std::exception& e) {
+            RCLCPP_WARN(rclcpp::get_logger("pidog_main"),
+                        "IMUNode initialization failed: %s (continuing without IMU)", e.what());
+        }
+
         // Future: Servo Node
         // RCLCPP_INFO(rclcpp::get_logger("pidog_main"), "Initializing ServoNode...");
         // servo_node = std::make_shared<pidog_ros::ServoNode>();
         // executor.add_node(servo_node);
-
-        // Future: IMU Node
-        // RCLCPP_INFO(rclcpp::get_logger("pidog_main"), "Initializing IMUNode...");
-        // imu_node = std::make_shared<pidog_ros::IMUNode>();
-        // executor.add_node(imu_node);
 
         RCLCPP_INFO(rclcpp::get_logger("pidog_main"), "========================================");
         RCLCPP_INFO(rclcpp::get_logger("pidog_main"), "PiDog ROS2 Node Running");
@@ -112,6 +121,7 @@ int main(int argc, char * argv[]) {
     // Clean shutdown
     camera_node.reset();
     audio_node.reset();
+    imu_node.reset();
 
     rclcpp::shutdown();
 
