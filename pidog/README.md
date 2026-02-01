@@ -1,113 +1,190 @@
-# PiDog Camera ROS2 Package
+# PiDog ROS2 Package
 
-Camera streaming package for Sunfounder PiDog robot running ROS2 Jazzy on Raspberry Pi 5.
+Unified ROS2 package for Sunfounder PiDog robot running on Raspberry Pi 5 with Fusion HAT+.
+
+## Features
+
+- **Camera Streaming**: GStreamer-based camera capture with compressed output for WiFi viewing
+- **Audio Streaming**: Bidirectional real-time audio (24kHz, 16-bit mono) for voice interaction
+- **Future**: Servo control, IMU data
 
 ## Building
 
 ```bash
+# Install ALSA development library (for audio)
+sudo apt install libasound2-dev
+
 cd ~/ros2_ws
 source /opt/ros/jazzy/setup.bash
-colcon build --packages-select pidog_camera
+colcon build --packages-select pidog_ros
 source install/setup.bash
 ```
 
-## Running the Camera Node
+## Running
 
+### Quick Start
+```bash
+./launch_pidog.sh
+```
+
+### Manual
 ```bash
 source ~/ros2_ws/install/setup.bash
-ros2 run pidog_camera pidog_camera_node
+ros2 run pidog_ros pidog_node
+```
+
+### With Launch File
+```bash
+ros2 launch pidog_ros pidog.launch.py
 ```
 
 ## Topics
 
-- **`pidog/camera/image_raw`** - Raw uncompressed camera images (sensor_msgs/Image)
-  - Frame ID: `pidog_camera_frame`
-  - Default resolution: 640x480 @ 30 FPS
-  - Format: BGR8
-  - **Use for:** Local processing on PiDog
+### Published
 
-- **`pidog/camera/image_raw/compressed`** - JPEG compressed images (sensor_msgs/CompressedImage)
-  - Same resolution and frame rate
-  - Format: JPEG (default quality: 80)
-  - **Use for:** Viewing on laptop over WiFi (10-20x smaller!)
+| Topic | Type | Description |
+|-------|------|-------------|
+| `pidog/camera/image_raw` | `sensor_msgs/Image` | Uncompressed BGR8 images (640x480 @ 30fps) |
+| `pidog/camera/image_raw/compressed` | `sensor_msgs/CompressedImage` | JPEG compressed images |
+| `pidog/audio/capture` | `std_msgs/UInt8MultiArray` | Microphone audio (24kHz, 16-bit, mono, 20ms chunks) |
+| `pidog/audio/status` | `std_msgs/String` | Audio node status/diagnostics |
+
+### Subscribed
+
+| Topic | Type | Description |
+|-------|------|-------------|
+| `pidog/audio/playback` | `std_msgs/UInt8MultiArray` | Speaker audio (24kHz, 16-bit, mono) |
 
 ## Parameters
 
-You can override parameters when launching:
+### Camera Parameters
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `camera.width` | 640 | Image width |
+| `camera.height` | 480 | Image height |
+| `camera.framerate` | 30 | Frames per second |
+| `camera.frame_id` | pidog_camera_frame | TF frame ID |
+| `camera.jpeg_quality` | 80 | JPEG compression quality (0-100) |
 
-```bash
-ros2 run pidog_camera pidog_camera_node --ros-args \
-  -p img_width:=1920 \
-  -p img_height:=1080 \
-  -p framerate:=15
-```
+### Audio Parameters
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `audio.capture_device` | plughw:2,0 | ALSA capture device |
+| `audio.playback_device` | plughw:2,0 | ALSA playback device |
+| `audio.enable_capture` | true | Enable microphone capture |
+| `audio.enable_playback` | true | Enable speaker playback |
+| `audio.capture_volume` | 80 | Capture volume (0-100) |
+| `audio.playback_volume` | 80 | Playback volume (0-100) |
 
-## Viewing Camera Stream on Laptop
+## Audio Format
 
-### Method 1: Using rqt_image_view (GUI)
+The audio node uses a format compatible with NVIDIA PersonaPlex:
 
-```bash
-# On your laptop (ensure ROS2 Jazzy is installed)
-source /opt/ros/jazzy/setup.bash
-ros2 run rqt_image_view rqt_image_view
-```
+- **Sample Rate**: 24000 Hz
+- **Channels**: 1 (mono)
+- **Bits per Sample**: 16 (signed little-endian)
+- **Chunk Size**: 20ms (480 frames, 960 bytes)
 
-Then select `/pidog/camera/image_raw` from the dropdown.
+## Viewing on Desktop
 
-### Method 2: Using command line
-
-```bash
-# Check if topic is publishing
-ros2 topic list | grep pidog
-
-# Check topic info
-ros2 topic info /pidog/camera/image_raw
-
-# Echo topic (text output)
-ros2 topic echo /pidog/camera/image_raw --no-arr
-
-# Monitor publish rate
-ros2 topic hz /pidog/camera/image_raw
-```
-
-### Method 3: Using image_view
-
+### Camera
 ```bash
 # On your laptop
 source /opt/ros/jazzy/setup.bash
-ros2 run image_view image_view --ros-args --remap image:=/pidog/camera/image_raw
+ros2 run rqt_image_view rqt_image_view
+# Select /pidog/camera/image_raw
 ```
 
-## Network Configuration
+### Audio
+```bash
+# Monitor audio capture
+ros2 topic hz /pidog/audio/capture
 
-Ensure both your PiDog (Raspberry Pi 5) and laptop are on the same network and can discover each other via ROS2 DDS.
+# View status
+ros2 topic echo /pidog/audio/status
+```
 
-### Check Network Connectivity
+## Network Setup
+
+Ensure both PiDog and your desktop are on the same network:
 
 ```bash
-# On PiDog, check what's being published
-ros2 topic list
-
-# On laptop, check if you can see PiDog's topics
+# Check topics are visible
 ros2 topic list | grep pidog
+
+# Set ROS_DOMAIN_ID if needed (same on both machines)
+export ROS_DOMAIN_ID=42
 ```
 
-If topics aren't visible across machines, check:
-1. Both machines are on same WiFi network
-2. Firewall settings allow multicast traffic
-3. ROS_DOMAIN_ID is same on both machines (default is 0)
+## Architecture
 
-### Set ROS_DOMAIN_ID (if needed)
-
-```bash
-# Add to ~/.bashrc on both machines
-export ROS_DOMAIN_ID=42
+```
+┌─────────────────────────────────────────────────────┐
+│                 pidog_node (main.cpp)               │
+│                                                     │
+│  ┌─────────────────┐    ┌─────────────────┐        │
+│  │   CameraNode    │    │   AudioNode     │        │
+│  │  (GStreamer)    │    │   (ALSA)        │        │
+│  └────────┬────────┘    └────────┬────────┘        │
+│           │                      │                  │
+│           ▼                      ▼                  │
+│  ┌─────────────────┐    ┌─────────────────┐        │
+│  │ image_raw       │    │ audio/capture   │        │
+│  │ image_raw/comp  │    │ audio/playback  │        │
+│  └─────────────────┘    └─────────────────┘        │
+│                                                     │
+│         MultiThreadedExecutor                       │
+└─────────────────────────────────────────────────────┘
 ```
 
 ## Files
 
-- `src/main.cpp` - Main entry point, initializes camera node
-- `src/camera_stream_node.cpp` - Camera streaming implementation using GStreamer
-- `include/pidog_camera/camera_stream_node.hpp` - Header file
-- `CMakeLists.txt` - Build configuration
-- `package.xml` - Package metadata and dependencies
+```
+pidog_ros/
+├── CMakeLists.txt
+├── package.xml
+├── include/pidog_ros/
+│   ├── camera_node.hpp
+│   └── audio_node.hpp
+├── src/
+│   ├── main.cpp
+│   ├── camera_node.cpp
+│   └── audio_node.cpp
+├── launch/
+│   └── pidog.launch.py
+├── launch_pidog.sh
+└── README.md
+```
+
+## Troubleshooting
+
+### Camera not working
+```bash
+# Check if camera is detected
+libcamera-hello --list-cameras
+
+# Test GStreamer pipeline
+gst-launch-1.0 libcamerasrc ! videoconvert ! autovideosink
+```
+
+### Audio not working
+```bash
+# List ALSA devices
+arecord -l
+aplay -l
+
+# Test recording
+arecord -D plughw:2,0 -f S16_LE -r 24000 -c 1 -d 5 test.wav
+
+# Test playback
+aplay -D plughw:2,0 test.wav
+```
+
+### ALSA device busy
+```bash
+# Check what's using the device
+fuser -v /dev/snd/*
+
+# Kill processes if needed
+sudo fuser -k /dev/snd/*
+```

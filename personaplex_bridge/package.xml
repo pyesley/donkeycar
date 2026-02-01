@@ -1,9 +1,9 @@
 <?xml version="1.0"?>
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
-  <name>pidog_ros</name>
-  <version>0.2.0</version>
-  <description>PiDog ROS2 package for Raspberry Pi 5 with Fusion HAT+ - Camera, Audio, Servo control</description>
+  <name>personaplex_bridge</name>
+  <version>0.1.0</version>
+  <description>ROS2 bridge for NVIDIA PersonaPlex - connects PiDog audio to PersonaPlex AI</description>
   <maintainer email="your_email@example.com">PiDog Developer</maintainer>
   <license>Apache License 2.0</license>
 
@@ -12,17 +12,14 @@
   <!-- ROS2 core -->
   <depend>rclcpp</depend>
   <depend>std_msgs</depend>
-  <depend>sensor_msgs</depend>
-  <depend>geometry_msgs</depend>
 
-  <!-- Camera -->
-  <depend>cv_bridge</depend>
-  <depend>image_transport</depend>
-  <depend>libopencv-dev</depend>
+  <!-- WebSocket (Boost.Beast) -->
+  <build_depend>libboost-dev</build_depend>
+  <exec_depend>libboost-dev</exec_depend>
 
-  <!-- Audio (ALSA) -->
-  <build_depend>libasound2-dev</build_depend>
-  <exec_depend>libasound2</exec_depend>
+  <!-- SSL for secure WebSocket -->
+  <build_depend>libssl-dev</build_depend>
+  <exec_depend>libssl-dev</exec_depend>
 
   <test_depend>ament_lint_auto</test_depend>
   <test_depend>ament_lint_common</test_depend>

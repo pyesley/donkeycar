@@ -1,16 +1,17 @@
-#include "pidog_camera/camera_stream_node.hpp"
+#include "pidog_ros/camera_node.hpp"
 #include <rclcpp/qos.hpp>
 #include <sstream>
 
-CameraStreamNode::CameraStreamNode(const rclcpp::NodeOptions & options)
- : Node("pidog_camera_stream_node", options), frame_count_(0), log_interval_sec_(5.0) {
+namespace pidog_ros {
+
+CameraNode::CameraNode(const rclcpp::NodeOptions & options)
+    : Node("pidog_camera_node", options), frame_count_(0), log_interval_sec_(5.0) {
 
     declare_parameters();
     load_parameters();
     build_gstreamer_pipeline();
 
     // QoS profile for sensor data (camera images)
-    // Using RELIABLE for guaranteed delivery over WiFi
     auto qos_profile_sensor_data = rclcpp::QoS(rclcpp::KeepLast(1))
         .reliable()
         .durability_volatile();
@@ -26,62 +27,61 @@ CameraStreamNode::CameraStreamNode(const rclcpp::NodeOptions & options)
     double timer_period_sec = 1.0 / static_cast<double>(framerate_);
     timer_ = this->create_wall_timer(
         std::chrono::duration<double>(timer_period_sec),
-        std::bind(&CameraStreamNode::timer_callback, this));
+        std::bind(&CameraNode::timer_callback, this));
 
-    RCLCPP_INFO(this->get_logger(), "PiDog Camera: Attempting to open GStreamer pipeline: %s",
+    RCLCPP_INFO(this->get_logger(), "CameraNode: Attempting to open GStreamer pipeline: %s",
                 gst_pipeline_string_.c_str());
 
     // Open GStreamer pipeline
     cap_.open(gst_pipeline_string_, cv::CAP_GSTREAMER);
 
     if (!cap_.isOpened()) {
-        RCLCPP_ERROR(this->get_logger(), "!!! Failed to open GStreamer pipeline.");
-        throw std::runtime_error("Failed to open GStreamer pipeline in PiDog CameraStreamNode");
+        RCLCPP_ERROR(this->get_logger(), "CameraNode: Failed to open GStreamer pipeline.");
+        throw std::runtime_error("Failed to open GStreamer pipeline in CameraNode");
     }
 
-    RCLCPP_INFO(this->get_logger(), "PiDog Camera: GStreamer pipeline opened successfully.");
-    RCLCPP_INFO(this->get_logger(), "Publishing uncompressed to: pidog/camera/image_raw");
-    RCLCPP_INFO(this->get_logger(), "Publishing compressed to: pidog/camera/image_raw/compressed (JPEG quality: %d)", jpeg_quality_);
+    RCLCPP_INFO(this->get_logger(), "CameraNode: GStreamer pipeline opened successfully.");
+    RCLCPP_INFO(this->get_logger(), "CameraNode: Publishing to pidog/camera/image_raw");
+    RCLCPP_INFO(this->get_logger(), "CameraNode: Publishing compressed to pidog/camera/image_raw/compressed (JPEG quality: %d)", jpeg_quality_);
     last_log_time_ = this->get_clock()->now();
 }
 
-CameraStreamNode::~CameraStreamNode() {
-    RCLCPP_INFO(this->get_logger(), "PiDog CameraStreamNode shutting down...");
+CameraNode::~CameraNode() {
+    RCLCPP_INFO(this->get_logger(), "CameraNode shutting down...");
     if (timer_) {
         timer_->cancel();
     }
     release_camera();
-    RCLCPP_INFO(this->get_logger(), "PiDog CameraStreamNode shutdown complete.");
+    RCLCPP_INFO(this->get_logger(), "CameraNode shutdown complete.");
 }
 
-void CameraStreamNode::declare_parameters() {
-    this->declare_parameter<int>("img_width", IMG_WIDTH_DEFAULT);
-    this->declare_parameter<int>("img_height", IMG_HEIGHT_DEFAULT);
-    this->declare_parameter<int>("framerate", FRAMERATE_DEFAULT);
-    this->declare_parameter<std::string>("camera_frame_id", "pidog_camera_frame");
-    this->declare_parameter<std::string>("gst_pipeline_override", "");
-    this->declare_parameter<int>("jpeg_quality", 80);  // 0-100, higher = better quality
+void CameraNode::declare_parameters() {
+    this->declare_parameter<int>("camera.width", IMG_WIDTH_DEFAULT);
+    this->declare_parameter<int>("camera.height", IMG_HEIGHT_DEFAULT);
+    this->declare_parameter<int>("camera.framerate", FRAMERATE_DEFAULT);
+    this->declare_parameter<std::string>("camera.frame_id", "pidog_camera_frame");
+    this->declare_parameter<std::string>("camera.gst_pipeline_override", "");
+    this->declare_parameter<int>("camera.jpeg_quality", 80);
 }
 
-void CameraStreamNode::load_parameters() {
-    this->get_parameter("img_width", img_width_);
-    this->get_parameter("img_height", img_height_);
-    this->get_parameter("framerate", framerate_);
-    this->get_parameter("camera_frame_id", camera_frame_id_);
-    this->get_parameter("gst_pipeline_override", gst_pipeline_string_);
-    this->get_parameter("jpeg_quality", jpeg_quality_);
+void CameraNode::load_parameters() {
+    this->get_parameter("camera.width", img_width_);
+    this->get_parameter("camera.height", img_height_);
+    this->get_parameter("camera.framerate", framerate_);
+    this->get_parameter("camera.frame_id", camera_frame_id_);
+    this->get_parameter("camera.gst_pipeline_override", gst_pipeline_string_);
+    this->get_parameter("camera.jpeg_quality", jpeg_quality_);
 }
 
-void CameraStreamNode::build_gstreamer_pipeline() {
+void CameraNode::build_gstreamer_pipeline() {
     // If a full pipeline string is provided as a parameter, use it directly
     if (!gst_pipeline_string_.empty()) {
-        RCLCPP_INFO(this->get_logger(), "Using overridden GStreamer pipeline: %s",
+        RCLCPP_INFO(this->get_logger(), "CameraNode: Using overridden GStreamer pipeline: %s",
                     gst_pipeline_string_.c_str());
         return;
     }
 
     // Construct the default pipeline for Raspberry Pi 5 with libcamera
-    // Let libcamerasrc choose its format, then convert and resize
     std::stringstream ss;
     ss << "libcamerasrc ! "
        << "videoconvert ! "
@@ -90,24 +90,24 @@ void CameraStreamNode::build_gstreamer_pipeline() {
        << ",height=" << img_height_ << " ! "
        << "appsink drop=true max-buffers=1";
     gst_pipeline_string_ = ss.str();
-    RCLCPP_INFO(this->get_logger(), "Constructed GStreamer pipeline: %s",
+    RCLCPP_INFO(this->get_logger(), "CameraNode: Constructed GStreamer pipeline: %s",
                 gst_pipeline_string_.c_str());
 }
 
-void CameraStreamNode::timer_callback() {
+void CameraNode::timer_callback() {
     if (!cap_.isOpened()) {
-        RCLCPP_WARN(this->get_logger(), "GStreamer pipeline is not open. Skipping frame capture.");
+        RCLCPP_WARN(this->get_logger(), "CameraNode: Pipeline not open. Skipping frame capture.");
         return;
     }
 
     cv::Mat frame;
     if (!cap_.read(frame)) {
-        RCLCPP_WARN(this->get_logger(), "Failed to capture frame from GStreamer pipeline.");
+        RCLCPP_WARN(this->get_logger(), "CameraNode: Failed to capture frame.");
         return;
     }
 
     if (frame.empty()) {
-        RCLCPP_WARN(this->get_logger(), "Captured empty frame.");
+        RCLCPP_WARN(this->get_logger(), "CameraNode: Captured empty frame.");
         return;
     }
 
@@ -146,26 +146,26 @@ void CameraStreamNode::timer_callback() {
 
         if (elapsed_time_for_log >= log_interval_sec_) {
             double fps = static_cast<double>(frame_count_) / elapsed_time_for_log;
-            RCLCPP_INFO(this->get_logger(), "PiDog Camera: Publishing frames (~%.1f FPS)", fps);
+            RCLCPP_INFO(this->get_logger(), "CameraNode: Publishing frames (~%.1f FPS)", fps);
             frame_count_ = 0;
             last_log_time_ = current_time;
         }
 
     } catch (const cv_bridge::Exception& e) {
-        RCLCPP_ERROR(this->get_logger(), "cv_bridge exception: %s", e.what());
+        RCLCPP_ERROR(this->get_logger(), "CameraNode: cv_bridge exception: %s", e.what());
     } catch (const cv::Exception& e) {
-        RCLCPP_ERROR(this->get_logger(), "OpenCV exception: %s", e.what());
+        RCLCPP_ERROR(this->get_logger(), "CameraNode: OpenCV exception: %s", e.what());
     } catch (const std::exception& e) {
-        RCLCPP_ERROR(this->get_logger(), "Standard exception: %s", e.what());
-    } catch (...) {
-        RCLCPP_ERROR(this->get_logger(), "Unknown exception during frame processing.");
+        RCLCPP_ERROR(this->get_logger(), "CameraNode: Exception: %s", e.what());
     }
 }
 
-void CameraStreamNode::release_camera() {
-    RCLCPP_INFO(this->get_logger(), "Releasing camera capture in PiDog CameraStreamNode...");
+void CameraNode::release_camera() {
+    RCLCPP_INFO(this->get_logger(), "CameraNode: Releasing camera capture...");
     if (cap_.isOpened()) {
         cap_.release();
-        RCLCPP_INFO(this->get_logger(), "cv::VideoCapture released.");
+        RCLCPP_INFO(this->get_logger(), "CameraNode: cv::VideoCapture released.");
     }
 }
+
+}  // namespace pidog_ros
