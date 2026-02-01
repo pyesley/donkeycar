@@ -1,5 +1,5 @@
-#ifndef PIDOG_CAMERA_STREAM_NODE_HPP_
-#define PIDOG_CAMERA_STREAM_NODE_HPP_
+#ifndef PIDOG_ROS_CAMERA_NODE_HPP_
+#define PIDOG_ROS_CAMERA_NODE_HPP_
 
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/image.hpp>
@@ -9,15 +9,17 @@
 #include <string>
 #include <chrono>
 
-// Default configuration for PiDog camera
-const int IMG_WIDTH_DEFAULT = 640;
-const int IMG_HEIGHT_DEFAULT = 480;
-const int FRAMERATE_DEFAULT = 30; // FPS
+namespace pidog_ros {
 
-class CameraStreamNode : public rclcpp::Node {
+// Default configuration for PiDog camera
+constexpr int IMG_WIDTH_DEFAULT = 640;
+constexpr int IMG_HEIGHT_DEFAULT = 480;
+constexpr int FRAMERATE_DEFAULT = 30;
+
+class CameraNode : public rclcpp::Node {
 public:
-    CameraStreamNode(const rclcpp::NodeOptions & options = rclcpp::NodeOptions());
-    ~CameraStreamNode();
+    explicit CameraNode(const rclcpp::NodeOptions & options = rclcpp::NodeOptions());
+    ~CameraNode();
 
 private:
     // Parameters
@@ -26,14 +28,12 @@ private:
     int framerate_;
     std::string camera_frame_id_;
     std::string gst_pipeline_string_;
+    int jpeg_quality_;
 
     // ROS 2 interfaces
     rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr image_publisher_;
     rclcpp::Publisher<sensor_msgs::msg::CompressedImage>::SharedPtr compressed_publisher_;
     rclcpp::TimerBase::SharedPtr timer_;
-
-    // Compression parameters
-    int jpeg_quality_;
 
     // OpenCV and GStreamer
     cv::VideoCapture cap_;
@@ -52,4 +52,6 @@ private:
     void release_camera();
 };
 
-#endif // PIDOG_CAMERA_STREAM_NODE_HPP_
+}  // namespace pidog_ros
+
+#endif  // PIDOG_ROS_CAMERA_NODE_HPP_
