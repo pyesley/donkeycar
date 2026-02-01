@@ -6,7 +6,7 @@
  * - CameraNode: Camera streaming (GStreamer + OpenCV)
  * - AudioNode: Bidirectional audio streaming (ALSA)
  * - IMUNode: SH3001 6-axis IMU (accelerometer + gyroscope)
- * - ServoNode: Servo control (future)
+ * - MotionNode: Motion control (walking, poses, commands)
  *
  * All nodes run in a MultiThreadedExecutor for parallel processing.
  *
@@ -20,9 +20,12 @@
  *   - pidog/audio/status (std_msgs/String)
  *   - pidog/imu (sensor_msgs/Imu)
  *   - pidog/imu/status (std_msgs/String)
+ *   - pidog/motion/status (std_msgs/String)
  *
  * Topics Subscribed:
  *   - pidog/audio/playback (std_msgs/UInt8MultiArray)
+ *   - pidog/cmd_vel (geometry_msgs/Twist)
+ *   - pidog/cmd (std_msgs/String)
  */
 
 #include "rclcpp/rclcpp.hpp"
@@ -30,7 +33,7 @@
 #include "pidog_ros/camera_node.hpp"
 #include "pidog_ros/audio_node.hpp"
 #include "pidog_ros/imu_node.hpp"
-// #include "pidog_ros/servo_node.hpp"  // Future
+#include "pidog_ros/motion_node.hpp"
 #include <memory>
 #include <csignal>
 
@@ -56,6 +59,7 @@ int main(int argc, char * argv[]) {
     std::shared_ptr<pidog_ros::CameraNode> camera_node = nullptr;
     std::shared_ptr<pidog_ros::AudioNode> audio_node = nullptr;
     std::shared_ptr<pidog_ros::IMUNode> imu_node = nullptr;
+    std::shared_ptr<pidog_ros::MotionNode> motion_node = nullptr;
 
     try {
         RCLCPP_INFO(rclcpp::get_logger("pidog_main"), "========================================");
@@ -95,10 +99,16 @@ int main(int argc, char * argv[]) {
                         "IMUNode initialization failed: %s (continuing without IMU)", e.what());
         }
 
-        // Future: Servo Node
-        // RCLCPP_INFO(rclcpp::get_logger("pidog_main"), "Initializing ServoNode...");
-        // servo_node = std::make_shared<pidog_ros::ServoNode>();
-        // executor.add_node(servo_node);
+        // Initialize Motion Node
+        RCLCPP_INFO(rclcpp::get_logger("pidog_main"), "Initializing MotionNode...");
+        try {
+            motion_node = std::make_shared<pidog_ros::MotionNode>();
+            executor.add_node(motion_node);
+            RCLCPP_INFO(rclcpp::get_logger("pidog_main"), "MotionNode added to executor.");
+        } catch (const std::exception& e) {
+            RCLCPP_WARN(rclcpp::get_logger("pidog_main"),
+                        "MotionNode initialization failed: %s (continuing without motion)", e.what());
+        }
 
         RCLCPP_INFO(rclcpp::get_logger("pidog_main"), "========================================");
         RCLCPP_INFO(rclcpp::get_logger("pidog_main"), "PiDog ROS2 Node Running");
@@ -119,6 +129,7 @@ int main(int argc, char * argv[]) {
     RCLCPP_INFO(rclcpp::get_logger("pidog_main"), "========================================");
 
     // Clean shutdown
+    motion_node.reset();  // Reset motion first to ensure robot stands
     camera_node.reset();
     audio_node.reset();
     imu_node.reset();
