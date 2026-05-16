@@ -74,10 +74,11 @@ private:
     // Hardware Control
     bool open_serial_port();
     void close_serial_port();
+    std::string find_rplidar_port();  // Auto-detect RPLidar port
     
-    // Low-level Communication (Updated)
+    // Low-level Communication
     bool serial_write(const uint8_t* data, size_t length);
-    int read_exact(uint8_t* buffer, size_t length, int timeout_ms); // <--- NEW FUNCTION
+    int read_exact(uint8_t* buffer, size_t length, int timeout_ms);
     bool send_command(uint8_t cmd);
     bool wait_response_header(uint8_t response_type, uint32_t& response_length);
     

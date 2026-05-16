@@ -12,7 +12,6 @@
 #include <chrono>
 
 
-// Update the constructor with more aggressive reset
 RplidarNode::RplidarNode(const rclcpp::NodeOptions & options)
     : Node("rplidar_node", options), scanning_(false), should_stop_(false) {
 
@@ -33,6 +32,12 @@ RplidarNode::RplidarNode(const rclcpp::NodeOptions & options)
 
     RCLCPP_INFO(this->get_logger(), "RPLiDAR node starting on port: %s", serial_port_.c_str());
     
+    // Check if we have a valid port
+    if (serial_port_.empty()) {
+        RCLCPP_ERROR(this->get_logger(), "No RPLidar port found. You can try starting manually with: ros2 service call /start_stop_lidar std_srvs/srv/SetBool '{data: true}'");
+        return;
+    }
+    
     // Try to initialize with retries
     bool initialized = false;
     for (int retry = 0; retry < 3 && !initialized; retry++) {
@@ -44,7 +49,6 @@ RplidarNode::RplidarNode(const rclcpp::NodeOptions & options)
         if (open_serial_port()) {
             RCLCPP_INFO(this->get_logger(), "Port opened. Attempting handshake...");
             
-            // More aggressive reset sequence
             // Send multiple stop commands to ensure clean state
             for (int i = 0; i < 3; i++) {
                 send_command(RPLIDAR_CMD_STOP);
@@ -62,8 +66,13 @@ RplidarNode::RplidarNode(const rclcpp::NodeOptions & options)
                 if (get_device_health()) {
                     RCLCPP_INFO(this->get_logger(), "LiDAR health check passed!");
                     initialized = true;
+                    
                     if (auto_start_) {
-                        start_scan();
+                        if (start_scan()) {
+                            RCLCPP_INFO(this->get_logger(), "Auto-started scanning");
+                        } else {
+                            RCLCPP_ERROR(this->get_logger(), "Failed to auto-start scan");
+                        }
                     }
                 } else {
                     RCLCPP_WARN(this->get_logger(), "Device health check failed");
@@ -75,15 +84,6 @@ RplidarNode::RplidarNode(const rclcpp::NodeOptions & options)
         } else {
             RCLCPP_ERROR(this->get_logger(), "Failed to open serial port");
         }
-
-        if (auto_start_) {
-            if (start_scan()) {
-                RCLCPP_INFO(this->get_logger(), "Auto-started scanning");
-            } else {
-                RCLCPP_ERROR(this->get_logger(), "Failed to auto-start scan");
-            }
-        }
-
     }
     
     if (!initialized) {
@@ -100,7 +100,7 @@ RplidarNode::~RplidarNode() {
 }
 
 void RplidarNode::declare_parameters() {
-    this->declare_parameter<std::string>("serial_port", "/dev/ttyUSB0");
+    this->declare_parameter<std::string>("serial_port", "auto");  // Default to auto-detect
     this->declare_parameter<int>("serial_baudrate", 115200);
     this->declare_parameter<std::string>("frame_id", "laser");
     this->declare_parameter<bool>("inverted", false);
@@ -108,7 +108,7 @@ void RplidarNode::declare_parameters() {
     this->declare_parameter<double>("scan_frequency", 10.0);
     this->declare_parameter<double>("range_min", 0.15);
     this->declare_parameter<double>("range_max", 12.0);
-    this->declare_parameter<bool>("auto_start", true);  // Changed to true
+    this->declare_parameter<bool>("auto_start", true);
 }
 
 void RplidarNode::load_parameters() {
@@ -121,6 +121,120 @@ void RplidarNode::load_parameters() {
     this->get_parameter("range_min", range_min_);
     this->get_parameter("range_max", range_max_);
     this->get_parameter("auto_start", auto_start_);
+    
+    // Auto-detect port if set to "auto" or if specified port doesn't exist
+    if (serial_port_ == "auto" || access(serial_port_.c_str(), F_OK) != 0) {
+        if (serial_port_ != "auto") {
+            RCLCPP_INFO(this->get_logger(), "Port '%s' not available, attempting auto-detection...", 
+                        serial_port_.c_str());
+        }
+        std::string detected = find_rplidar_port();
+        if (!detected.empty()) {
+            serial_port_ = detected;
+        } else {
+            serial_port_ = "";  // Clear to indicate no port found
+        }
+    }
+}
+
+std::string RplidarNode::find_rplidar_port() {
+    RCLCPP_INFO(this->get_logger(), "Auto-detecting RPLidar port...");
+    
+    // Get list of /dev/ttyUSB* devices
+    std::vector<std::string> candidates;
+    
+    for (int i = 0; i < 10; i++) {
+        std::string port = "/dev/ttyUSB" + std::to_string(i);
+        if (access(port.c_str(), F_OK) == 0) {
+            candidates.push_back(port);
+            RCLCPP_INFO(this->get_logger(), "Found serial port: %s", port.c_str());
+        }
+    }
+    
+    if (candidates.empty()) {
+        RCLCPP_ERROR(this->get_logger(), "No /dev/ttyUSB* devices found");
+        return "";
+    }
+    
+    // Try each port
+    for (const auto& port : candidates) {
+        RCLCPP_INFO(this->get_logger(), "Probing %s for RPLidar...", port.c_str());
+        
+        int fd = open(port.c_str(), O_RDWR | O_NOCTTY);
+        if (fd < 0) {
+            RCLCPP_WARN(this->get_logger(), "Cannot open %s: %s", port.c_str(), strerror(errno));
+            continue;
+        }
+        
+        // Configure serial port
+        struct termios tty;
+        memset(&tty, 0, sizeof(tty));
+        if (tcgetattr(fd, &tty) != 0) {
+            close(fd);
+            continue;
+        }
+        
+        cfsetospeed(&tty, B115200);
+        cfsetispeed(&tty, B115200);
+        tty.c_cflag = (tty.c_cflag & ~CSIZE) | CS8;
+        tty.c_cflag |= (CLOCAL | CREAD);
+        tty.c_cflag &= ~(PARENB | PARODD | CSTOPB | CRTSCTS);
+        tty.c_iflag &= ~(IGNBRK | IXON | IXOFF | IXANY | ICRNL | INLCR);
+        tty.c_oflag = 0;
+        tty.c_lflag = 0;
+        tty.c_cc[VMIN] = 0;
+        tty.c_cc[VTIME] = 5;  // 500ms timeout
+        
+        if (tcsetattr(fd, TCSANOW, &tty) != 0) {
+            close(fd);
+            continue;
+        }
+        
+        // Flush and send stop command to reset device
+        tcflush(fd, TCIOFLUSH);
+        uint8_t stop_cmd[2] = {0xA5, RPLIDAR_CMD_STOP};
+        write(fd, stop_cmd, 2);
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        tcflush(fd, TCIOFLUSH);
+        
+        // Send GET_INFO command
+        uint8_t info_cmd[2] = {0xA5, RPLIDAR_CMD_GET_INFO};
+        if (write(fd, info_cmd, 2) != 2) {
+            close(fd);
+            continue;
+        }
+        
+        // Try to read response header (A5 5A ...)
+        uint8_t header[7];
+        size_t total_read = 0;
+        auto start_time = std::chrono::steady_clock::now();
+        
+        while (total_read < 7) {
+            auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::steady_clock::now() - start_time).count();
+            if (elapsed > 1000) break;  // 1 second timeout
+            
+            ssize_t n = read(fd, header + total_read, 7 - total_read);
+            if (n > 0) total_read += n;
+            else std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
+        
+        close(fd);
+        
+        // Check for valid RPLidar response header
+        if (total_read >= 7 && header[0] == 0xA5 && header[1] == 0x5A) {
+            RCLCPP_INFO(this->get_logger(), "RPLidar detected on %s!", port.c_str());
+            return port;
+        } else {
+            RCLCPP_DEBUG(this->get_logger(), "%s is not an RPLidar (got %zu bytes, header: %02X %02X)", 
+                        port.c_str(), total_read, 
+                        total_read > 0 ? header[0] : 0, 
+                        total_read > 1 ? header[1] : 0);
+        }
+    }
+    
+    RCLCPP_ERROR(this->get_logger(), "No RPLidar found on any USB port");
+    return "";
 }
 
 void RplidarNode::start_stop_callback(const std::shared_ptr<std_srvs::srv::SetBool::Request> request,
@@ -131,6 +245,18 @@ void RplidarNode::start_stop_callback(const std::shared_ptr<std_srvs::srv::SetBo
             response->success = true;
             response->message = "Already scanning";
             return;
+        }
+
+        // If port is not set, try to find it
+        if (serial_port_.empty()) {
+            std::string detected = find_rplidar_port();
+            if (!detected.empty()) {
+                serial_port_ = detected;
+            } else {
+                response->success = false;
+                response->message = "No RPLidar found on any USB port";
+                return;
+            }
         }
 
         // If port is closed, try to open it first
@@ -177,6 +303,7 @@ bool RplidarNode::open_serial_port() {
     memset(&tty, 0, sizeof(tty));
     if (tcgetattr(serial_fd_, &tty) != 0) {
         close(serial_fd_);
+        serial_fd_ = -1;
         return false;
     }
 
@@ -201,10 +328,11 @@ bool RplidarNode::open_serial_port() {
 
     if (tcsetattr(serial_fd_, TCSANOW, &tty) != 0) {
         close(serial_fd_);
+        serial_fd_ = -1;
         return false;
     }
 
-    // CORRECTED DTR Control for RPLiDAR A1:
+    // DTR Control for RPLiDAR A1:
     // DTR LOW = Motor ON, DTR HIGH = Motor OFF
     int dtr_flag = TIOCM_DTR;
     
@@ -231,13 +359,13 @@ void RplidarNode::close_serial_port() {
         // Set DTR high to stop motor
         int dtr_flag = TIOCM_DTR;
         ioctl(serial_fd_, TIOCMBIS, &dtr_flag);  // Set high = motor off
+        RCLCPP_INFO(this->get_logger(), "Motor disabled (DTR set high)");
         
         close(serial_fd_);
         serial_fd_ = -1;
     }
 }
 
-// Replace the current read_exact function with this improved version
 int RplidarNode::read_exact(uint8_t* buffer, size_t length, int timeout_ms) {
     if (serial_fd_ < 0) return -1;
     
@@ -286,7 +414,6 @@ bool RplidarNode::send_command(uint8_t cmd) {
     uint8_t pkt[2] = {0xA5, cmd};
     return serial_write(pkt, 2);
 }
-
 
 bool RplidarNode::wait_response_header(uint8_t response_type, uint32_t& response_length) {
     // Read exactly 7 bytes for the header
@@ -436,7 +563,21 @@ bool RplidarNode::start_scan() {
     
     RCLCPP_INFO(this->get_logger(), "Starting scan...");
     
-    // Clear any pending data
+    // Ensure serial port is open
+    if (serial_fd_ < 0) {
+        RCLCPP_ERROR(this->get_logger(), "Serial port not open");
+        return false;
+    }
+    
+    // Ensure motor is running - Set DTR LOW
+    int dtr_flag = TIOCM_DTR;
+    ioctl(serial_fd_, TIOCMBIC, &dtr_flag);  // Clear DTR (low) = motor ON
+    RCLCPP_INFO(this->get_logger(), "Motor enabled (DTR cleared/low)");
+    std::this_thread::sleep_for(std::chrono::milliseconds(500));  // Let motor spin up
+    
+    // Send stop command first to reset state, then flush
+    send_command(RPLIDAR_CMD_STOP);
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
     tcflush(serial_fd_, TCIOFLUSH);
     
     // Send SCAN command
@@ -463,17 +604,24 @@ bool RplidarNode::start_scan() {
 }
 
 bool RplidarNode::stop_scan() {
+    RCLCPP_INFO(this->get_logger(), "Stopping scan...");
+    
+    // Stop the scan thread first
     scanning_ = false;
     if (scan_thread_.joinable()) scan_thread_.join();
     
-    send_command(RPLIDAR_CMD_STOP);
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    // Send multiple stop commands to ensure it takes effect
+    for (int i = 0; i < 3; i++) {
+        send_command(RPLIDAR_CMD_STOP);
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    }
     
-    // Keep motor spinning even when not scanning
-    // (DTR should remain low)
+    // STOP THE MOTOR - Set DTR HIGH
+    int dtr_flag = TIOCM_DTR;
+    ioctl(serial_fd_, TIOCMBIS, &dtr_flag);  // Set DTR high = motor OFF
     
     tcflush(serial_fd_, TCIOFLUSH);
-    RCLCPP_INFO(this->get_logger(), "Scan stopped (motor still running)");
+    RCLCPP_INFO(this->get_logger(), "Scan stopped and motor disabled (DTR set high)");
     return true;
 }
 
@@ -551,20 +699,3 @@ sensor_msgs::msg::LaserScan RplidarNode::create_laser_scan_msg() {
 void RplidarNode::publish_scan() {
     if (scanning_) laser_publisher_->publish(create_laser_scan_msg());
 }
-
-
-
-
-
-
-
-// Update the open_serial_port function - REVERSE the DTR logic:
-
-
-
-// Also update close_serial_port to stop the motor properly:
-
-
-
-// And for the stop_scan function:
-

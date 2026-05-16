@@ -67,7 +67,7 @@ ArduinoBridgeNode::~ArduinoBridgeNode() {
 
 void ArduinoBridgeNode::declare_parameters() {
     this->declare_parameter<std::string>("serial_port", "/dev/ttyAMA0");
-    this->declare_parameter<int>("baud_rate", 57600);
+    this->declare_parameter<int>("baud_rate", 115200);
     this->declare_parameter<double>("throttle_axis_scale", 255.0);
     this->declare_parameter<int>("steering_max_pwm_left", 0);
     this->declare_parameter<int>("steering_max_pwm_right", 80);
