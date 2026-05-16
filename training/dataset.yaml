@@ -1,0 +1,8 @@
+# YOLOv8 dataset config. Paths are relative to this file.
+# Re-run prepare_dataset.py after editing if you change class IDs.
+path: ./dataset
+train: images/train
+val: images/val
+
+names:
+  0: banana_peel
